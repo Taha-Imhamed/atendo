@@ -32,12 +32,12 @@ export default function Layout({ children, role = "guest" }: LayoutProps) {
     <div className="min-h-screen flex flex-col font-sans text-foreground bg-background relative">
       <Background3D />
       <header className="sticky top-0 z-50 w-full border-b border-border bg-background/85 backdrop-blur-3xl shadow-[0_4px_30px_rgba(94,102,112,0.12)] pt-[env(safe-area-inset-top)]">
-        <div className="container mx-auto px-3 sm:px-6 py-3 sm:py-0 sm:h-16 flex flex-wrap items-center justify-between gap-3">
+        <div className="container mx-auto px-3 sm:px-6 py-3 sm:py-0 sm:h-16 flex flex-wrap items-center justify-between gap-2 sm:gap-3">
           <Link href="/" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <AppLogo />
           </Link>
 
-          <nav className="flex items-center gap-3">
+          <nav className="flex w-full sm:w-auto items-center justify-between sm:justify-end gap-2 sm:gap-3 flex-wrap">
             <ThemeSwitcher />
             {role === "professor" && (
               <>
@@ -57,7 +57,7 @@ export default function Layout({ children, role = "guest" }: LayoutProps) {
                 >
                   Roster
                 </Link>
-                <div className="h-4 w-px bg-border mx-2" />
+                <div className="hidden sm:block h-4 w-px bg-border mx-2" />
               </>
             )}
 

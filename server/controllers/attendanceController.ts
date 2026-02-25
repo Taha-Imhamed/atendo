@@ -62,4 +62,18 @@ export const attendanceController = {
       next(error);
     }
   },
+
+  async manualCheckIn(req: Request, res: Response, next: NextFunction) {
+    try {
+      const classId =
+        typeof req.body?.classId === "string" ? req.body.classId : "";
+      const result = await attendanceService.manualCheckInForTesting(
+        req.user!.id,
+        classId,
+      );
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
 };

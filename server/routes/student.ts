@@ -18,6 +18,7 @@ export function registerStudentRoutes(parent: Router) {
   );
   router.get("/me/attendance", studentController.getMyAttendance);
   router.get("/me/attendance/history", attendanceController.getHistory);
+  router.post("/me/manual-checkin", attendanceController.manualCheckIn);
   router.get("/me/enrollments", studentController.getEnrollments);
   router.post(
     "/me/excuses",

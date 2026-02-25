@@ -1,4 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
+import { randomUUID } from "crypto";
 import { db } from "../db";
 import {
   attendance_records,
@@ -470,5 +471,48 @@ export const attendanceService = {
       courseName: row.courseName,
       groupName: row.groupName,
     }));
+  },
+
+  async manualCheckInForTesting(studentId: string, classId: string) {
+    const roundId = classId.trim();
+    if (!roundId) {
+      throw new ApiError(400, "Class ID is required.");
+    }
+
+    const [round] = await db
+      .select()
+      .from(attendance_rounds)
+      .where(eq(attendance_rounds.id, roundId))
+      .limit(1);
+
+    if (!round || !round.is_active) {
+      throw new ApiError(404, "Active class round not found for this ID.");
+    }
+
+    const session = await requireActiveSession(db, round.session_id);
+    await ensureStudentEnrollment(db, studentId, session.group_id);
+    await ensureNotAlreadyRecorded(db, roundId, studentId);
+
+    const recordedAt = new Date().toISOString();
+    await db.insert(attendance_records).values({
+      round_id: roundId,
+      student_id: studentId,
+      status: "on_time",
+      recorded_at: recordedAt,
+      client_scan_id: `manual-${randomUUID()}`,
+    });
+
+    logger.warn("manual testing check-in recorded", {
+      userId: studentId,
+      roundId,
+      sessionId: session.id,
+    });
+
+    return {
+      roundId,
+      recordedAt,
+      status: "on_time",
+      manual: true,
+    };
   },
 };

@@ -115,7 +115,8 @@ export default function ProfessorSession() {
       return res.json();
     },
     enabled: Boolean(sessionId),
-    staleTime: Infinity,
+    staleTime: 0,
+    refetchInterval: 5000,
   });
 
   const statsQuery = useQuery<SessionStatsResponse>({
@@ -452,7 +453,7 @@ export default function ProfessorSession() {
 
         <div className="grid md:grid-cols-3 gap-6 md:gap-8">
           {/* Main QR Area */}
-          <div className="md:col-span-2 space-y-6">
+          <div className="md:order-2 md:col-span-2 space-y-6">
             <Card className="p-5 sm:p-8 border-border shadow-2xl shadow-primary/5 bg-white flex flex-col items-center justify-center min-h-[360px] sm:min-h-[420px] md:min-h-[500px]">
               <div className="w-full max-w-md mx-auto">
                 <QRCodeGenerator
@@ -465,7 +466,7 @@ export default function ProfessorSession() {
           </div>
 
           {/* Sidebar Stats */}
-          <div className="space-y-6">
+          <div className="md:order-1 space-y-6">
             <Card className="p-6 bg-primary text-white border-none shadow-xl">
               <h3 className="text-sm font-medium opacity-80 uppercase tracking-wider mb-2">Live Attendees</h3>
               <div className="flex items-baseline gap-2">
@@ -491,11 +492,11 @@ export default function ProfessorSession() {
 
             <Card className="p-6 border-border">
               <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-primary" /> Recent Scans
+                <Clock className="w-4 h-4 text-primary" /> Live Saved Scans
               </h3>
               <div className="space-y-4">
                 {topStudents.length === 0 && (
-                  <p className="text-sm text-muted-foreground">Waiting for scans…</p>
+                  <p className="text-sm text-muted-foreground">Waiting for scans...</p>
                 )}
                 {topStudents.map((student, i) => (
                   <div
@@ -509,7 +510,7 @@ export default function ProfessorSession() {
                     <div className="flex-1">
                       <p className="text-sm font-medium">{student.displayName}</p>
                       <p className="text-xs text-muted-foreground">
-                        {student.attendanceCount} check-ins
+                        {student.attendanceCount} saved check-ins
                       </p>
                     </div>
                     <ShieldCheck className="w-4 h-4 text-green-500" />
@@ -520,7 +521,7 @@ export default function ProfessorSession() {
             
             <div className="p-4 bg-yellow-50 text-yellow-800 rounded-lg text-sm border border-yellow-100">
                <p className="font-semibold mb-1">Security Active</p>
-               QR codes rotate after each scan and expire quickly.
+               QR regenerates every 5 seconds and rotates after each scan.
             </div>
 
             <Card className="p-4 border border-slate-200/60">
@@ -586,4 +587,7 @@ export default function ProfessorSession() {
     </Layout>
   );
 }
+
+
+
 

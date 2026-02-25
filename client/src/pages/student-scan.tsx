@@ -60,6 +60,13 @@ type AttendanceHistoryResponse = {
   }>;
 };
 
+type ScanFeedItem = {
+  id: string;
+  time: string;
+  status: "saved" | "synced" | "failed";
+  message: string;
+};
+
 export default function StudentScan() {
   const { data: user } = useCurrentUser();
   const queryClient = useQueryClient();
@@ -76,6 +83,9 @@ export default function StudentScan() {
     confirmPassword: "",
   });
   const [changingPassword, setChangingPassword] = useState(false);
+  const [scanFeed, setScanFeed] = useState<ScanFeedItem[]>([]);
+  const [manualClassId, setManualClassId] = useState("");
+  const [submittingManualCheckIn, setSubmittingManualCheckIn] = useState(false);
 
   const deviceFingerprint = useMemo(() => {
     if (typeof window === "undefined") return undefined;
@@ -161,14 +171,51 @@ export default function StudentScan() {
         const code = body?.code as string | undefined;
         if (code === "token_expired" || code === "token_already_consumed") {
           await deleteQueuedScan(scan.client_scan_id);
+          setScanFeed((prev) => [
+            {
+              id: crypto.randomUUID(),
+              time: new Date().toISOString(),
+              status: "failed",
+              message: "Queued scan expired before sync.",
+            },
+            ...prev,
+          ].slice(0, 20));
           continue;
         }
         setOfflineStatus("failed");
+        setScanFeed((prev) => [
+          {
+            id: crypto.randomUUID(),
+            time: new Date().toISOString(),
+            status: "failed",
+            message: "Queued scan sync failed.",
+          },
+          ...prev,
+        ].slice(0, 20));
         return;
       } catch {
         setOfflineStatus("failed");
+        setScanFeed((prev) => [
+          {
+            id: crypto.randomUUID(),
+            time: new Date().toISOString(),
+            status: "failed",
+            message: "No internet. Could not sync queued scan.",
+          },
+          ...prev,
+        ].slice(0, 20));
         return;
       }
+
+      setScanFeed((prev) => [
+        {
+          id: crypto.randomUUID(),
+          time: new Date().toISOString(),
+          status: "synced",
+          message: "Queued scan synced successfully.",
+        },
+        ...prev,
+      ].slice(0, 20));
     }
 
     setOfflineStatus("synced");
@@ -269,6 +316,15 @@ export default function StudentScan() {
           });
           setOfflineStatus("saved");
           refreshQueueCount();
+          setScanFeed((prev) => [
+            {
+              id: crypto.randomUUID(),
+              time: new Date().toISOString(),
+              status: "saved",
+              message: "Scan saved offline.",
+            },
+            ...prev,
+          ].slice(0, 20));
           return { success: true, message: "Saved offline." };
         }
 
@@ -287,10 +343,28 @@ export default function StudentScan() {
         toast({ title: "Attendance recorded", description: "You are checked in." });
         attendanceQuery.refetch();
         attendanceHistoryQuery.refetch();
+        setScanFeed((prev) => [
+          {
+            id: crypto.randomUUID(),
+            time: new Date().toISOString(),
+            status: "synced",
+            message: "Scan saved on server.",
+          },
+          ...prev,
+        ].slice(0, 20));
         return { success: true, message: "Attendance recorded successfully." };
       } catch (error) {
         const message = error instanceof Error ? error.message : "Scan failed.";
         toast({ variant: "destructive", title: "Scan failed", description: message });
+        setScanFeed((prev) => [
+          {
+            id: crypto.randomUUID(),
+            time: new Date().toISOString(),
+            status: "failed",
+            message,
+          },
+          ...prev,
+        ].slice(0, 20));
         return { success: false, message };
       }
     },
@@ -315,6 +389,60 @@ export default function StudentScan() {
           : offlineStatus === "failed"
             ? "Sync failed"
             : "Synced";
+
+  const handleManualCheckIn = async () => {
+    const classId = manualClassId.trim();
+    if (!classId) {
+      toast({
+        variant: "destructive",
+        title: "Class ID required",
+        description: "Enter a class ID before manual check-in.",
+      });
+      return;
+    }
+
+    setSubmittingManualCheckIn(true);
+    try {
+      await apiRequest("POST", "/api/me/manual-checkin", { classId });
+      toast({
+        title: "Manual check-in saved",
+        description: "Your attendance was saved using class ID.",
+      });
+      setManualClassId("");
+      await Promise.all([
+        attendanceQuery.refetch(),
+        attendanceHistoryQuery.refetch(),
+      ]);
+      setScanFeed((prev) => [
+        {
+          id: crypto.randomUUID(),
+          time: new Date().toISOString(),
+          status: "synced",
+          message: "Manual class ID check-in saved.",
+        },
+        ...prev,
+      ].slice(0, 20));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Manual check-in failed.";
+      toast({
+        variant: "destructive",
+        title: "Manual check-in failed",
+        description: message,
+      });
+      setScanFeed((prev) => [
+        {
+          id: crypto.randomUUID(),
+          time: new Date().toISOString(),
+          status: "failed",
+          message,
+        },
+        ...prev,
+      ].slice(0, 20));
+    } finally {
+      setSubmittingManualCheckIn(false);
+    }
+  };
 
   return (
     <Layout role="student">
@@ -396,30 +524,103 @@ export default function StudentScan() {
               </Card>
             </div>
 
-            {selectedEnrollment ? (
-              <Card className="border-border/70 shadow-sm">
+            <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+              <Card className="border-border/70 shadow-sm order-2 lg:order-1">
                 <CardHeader>
-                  <CardTitle>Check In</CardTitle>
+                  <CardTitle>Live Scan Feed</CardTitle>
                   <p className="text-sm text-muted-foreground">
-                    {selectedEnrollment.course.code} - {selectedEnrollment.course.name}
+                    Shows if each scan was saved or failed.
                   </p>
                 </CardHeader>
                 <CardContent>
-                  <QRScanner onScan={handleScan} />
+                  {scanFeed.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No scan activity yet.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-[360px] overflow-auto pr-1">
+                      {scanFeed.map((item) => (
+                        <div
+                          key={item.id}
+                          className="rounded-lg border border-border/70 bg-background/60 p-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <Badge
+                              variant="outline"
+                              className={
+                                item.status === "synced"
+                                  ? "border-emerald-500 text-emerald-600"
+                                  : item.status === "saved"
+                                    ? "border-amber-500 text-amber-600"
+                                    : "border-destructive text-destructive"
+                              }
+                            >
+                              {item.status}
+                            </Badge>
+                            <span className="text-[11px] text-muted-foreground">
+                              {new Date(item.time).toLocaleTimeString()}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">{item.message}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            ) : (
-              <Card className="border-border/70 shadow-sm">
-                <CardHeader>
-                  <CardTitle>Ready to scan</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    Select a class first to unlock the QR scanner.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+
+              <div className="space-y-4 order-1 lg:order-2">
+                {selectedEnrollment ? (
+                  <Card className="border-border/70 shadow-sm">
+                    <CardHeader>
+                      <CardTitle>Check In</CardTitle>
+                      <p className="text-sm text-muted-foreground">
+                        {selectedEnrollment.course.code} - {selectedEnrollment.course.name}
+                      </p>
+                    </CardHeader>
+                    <CardContent>
+                      <QRScanner onScan={handleScan} />
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="border-border/70 shadow-sm">
+                    <CardHeader>
+                      <CardTitle>Ready to scan</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-muted-foreground">
+                        Select a class first to unlock the QR scanner.
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+
+                <Card className="border-border/70 shadow-sm">
+                  <CardHeader>
+                    <CardTitle>Manual Class ID (Testing)</CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      If camera does not work, enter class ID manually to test check-in.
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="manual-class-id">Class ID</Label>
+                      <Input
+                        id="manual-class-id"
+                        value={manualClassId}
+                        onChange={(event) => setManualClassId(event.target.value)}
+                        placeholder="Paste active class ID"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={handleManualCheckIn}
+                      disabled={submittingManualCheckIn}
+                    >
+                      {submittingManualCheckIn ? "Saving..." : "Manual check-in"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
 
             <Card className="border-border/70 shadow-sm" aria-busy={attendanceHistoryQuery.isFetching}>
               <CardHeader className="flex flex-row items-center justify-between">
