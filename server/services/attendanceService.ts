@@ -367,14 +367,6 @@ export const attendanceService = {
       token: nextToken.rawToken,
       issuedAt: nextToken.issuedAt,
       expiresAt: nextToken.expiresAt.toISOString(),
-      sessionId: session.id,
-      courseId: session.course_id,
-      groupId: session.group_id,
-      geofenceEnabled: round.geofence_enabled,
-      geofenceRadiusM: round.geofence_radius_m,
-      latitude: round.latitude,
-      longitude: round.longitude,
-      isBreakRound: round.is_break_round,
     });
 
     emitRoundQrUpdated(session.id, {

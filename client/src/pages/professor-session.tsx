@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Clock, ShieldCheck, XCircle, RefreshCcw, PauseCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, Clock, ShieldCheck, XCircle, RefreshCcw, PauseCircle, Loader2, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -97,6 +97,7 @@ export default function ProfessorSession() {
   const [startingRound, setStartingRound] = useState(false);
   const [closingRound, setClosingRound] = useState(false);
   const [isBreakRound, setIsBreakRound] = useState(false);
+  const [copiedClassId, setCopiedClassId] = useState(false);
 
   useEffect(() => {
     if (user === null) {
@@ -520,6 +521,39 @@ export default function ProfessorSession() {
                <p className="font-semibold mb-1">Security Active</p>
                QR regenerates every 5 seconds and rotates after each scan.
             </div>
+
+            <Card className="p-4 border border-border/70">
+              <h3 className="font-semibold mb-2">Class ID (Manual Testing)</h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                Share this active round ID with students who use manual check-in.
+              </p>
+              {activeRoundId ? (
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 rounded-md bg-muted px-2 py-1 text-xs break-all">
+                    {activeRoundId}
+                  </code>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(activeRoundId);
+                        setCopiedClassId(true);
+                        setTimeout(() => setCopiedClassId(false), 1200);
+                      } catch {
+                        // no-op
+                      }
+                    }}
+                  >
+                    <Copy className="h-4 w-4 mr-1" />
+                    {copiedClassId ? "Copied" : "Copy"}
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No active class ID yet.</p>
+              )}
+            </Card>
 
             <Card className="p-4 border border-border/70">
               <div className="flex items-center justify-between mb-3">

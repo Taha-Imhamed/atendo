@@ -5,7 +5,10 @@ import { qr_tokens } from "@shared/schema";
 import { ApiError } from "../errors/apiError";
 import { logger } from "../utils/logger";
 
-const TOKEN_TTL_MS = 20_000;
+const TOKEN_TTL_MS = Math.max(
+  15_000,
+  Number(process.env.QR_TOKEN_TTL_SECONDS ?? 120) * 1000,
+);
 const OFFLINE_GRACE_MS =
   Number(process.env.QR_OFFLINE_GRACE_SECONDS ?? 0) * 1000;
 const MAX_CLOCK_SKEW_MS = 60_000;

@@ -31,7 +31,7 @@ export default function Layout({ children, role = "guest" }: LayoutProps) {
   return (
     <div className="min-h-screen flex flex-col font-sans text-foreground bg-background relative">
       <Background3D />
-      <header className="sticky top-0 z-50 w-full border-b border-border bg-background/85 backdrop-blur-lg sm:backdrop-blur-3xl shadow-[0_4px_30px_rgba(94,102,112,0.12)] pt-[env(safe-area-inset-top)]">
+      <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 sm:bg-background/85 backdrop-blur-0 sm:backdrop-blur-xl shadow-[0_2px_10px_rgba(94,102,112,0.12)] pt-[env(safe-area-inset-top)]">
         <div className="container mx-auto px-3 sm:px-6 py-3 sm:py-0 sm:h-16 flex flex-wrap items-center justify-between gap-2 sm:gap-3">
           <Link href="/" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <AppLogo />
@@ -88,7 +88,7 @@ export default function Layout({ children, role = "guest" }: LayoutProps) {
 
       <main className="flex-1">
         <div className="container mx-auto px-3 sm:px-4 py-6 sm:py-8">
-          <div className="rounded-2xl sm:rounded-[32px] border border-border/70 bg-card/85 shadow-[0_18px_40px_rgba(94,102,112,0.12)] sm:shadow-[0_24px_60px_rgba(94,102,112,0.12)] backdrop-blur-lg sm:backdrop-blur-3xl">
+          <div className="rounded-2xl sm:rounded-[32px] border border-border/70 bg-card/95 shadow-[0_10px_26px_rgba(94,102,112,0.12)] sm:shadow-[0_20px_46px_rgba(94,102,112,0.12)] backdrop-blur-0 sm:backdrop-blur-md">
             <div className="p-4 sm:p-6 md:p-8 lg:p-10">{children}</div>
           </div>
         </div>

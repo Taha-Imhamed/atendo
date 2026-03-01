@@ -1,6 +1,5 @@
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 
 interface QRCodeGeneratorProps {
   payload: string | null;
@@ -13,7 +12,7 @@ export default function QRCodeGenerator({
   expiresAt,
   roundNumber,
 }: QRCodeGeneratorProps) {
-  const [qrSize, setQrSize] = useState(360);
+  const [qrSize, setQrSize] = useState(240);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [initialDuration, setInitialDuration] = useState<number | null>(null);
 
@@ -22,8 +21,8 @@ export default function QRCodeGenerator({
       if (typeof window === "undefined") return;
       const availableWidth = window.innerWidth - 64;
       const calculated = Math.min(
-        600,
-        Math.max(320, Math.floor(availableWidth * 0.98)),
+        360,
+        Math.max(180, Math.floor(availableWidth * 0.8)),
       );
       setQrSize(calculated);
     };
@@ -68,11 +67,11 @@ export default function QRCodeGenerator({
 
   return (
     <div className="flex flex-col items-center justify-center p-6 sm:p-8 bg-card rounded-2xl shadow-xl border border-border max-w-md w-full mx-auto">
-      <div className="relative mb-6 bg-white p-3 sm:p-4 rounded-2xl border-[6px] border-black">
+      <div className="relative mb-6 bg-white p-2 sm:p-3 rounded-2xl border-4 border-black">
         <QRCodeSVG
           value={payload}
           size={qrSize}
-          level="L"
+          level="M"
           includeMargin={true}
           className="rounded-lg"
           bgColor="#ffffff"
@@ -89,11 +88,9 @@ export default function QRCodeGenerator({
         </p>
         
         <div className="w-full bg-muted h-2 rounded-full overflow-hidden mt-4">
-          <motion.div
-            className="h-full bg-accent"
-            initial={{ width: "100%" }}
-            animate={{ width: `${progressPercent}%` }}
-            transition={{ duration: 0.8, ease: "linear" }}
+          <div
+            className="h-full bg-accent transition-[width] duration-700 linear"
+            style={{ width: `${progressPercent}%` }}
           />
         </div>
       </div>
