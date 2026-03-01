@@ -39,6 +39,15 @@ export default function Login() {
   const queryClient = useQueryClient();
   const { data: user } = useCurrentUser();
   const forcedRole = parseForcedRoleFromPath(location);
+  const navigateAfterLogin = (role: PortalRole) => {
+    const destination = role === "professor" ? "/professor/dashboard" : "/student/scan";
+    setLocation(destination);
+    window.setTimeout(() => {
+      if (window.location.pathname.includes("/login")) {
+        window.location.assign(destination);
+      }
+    }, 350);
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -68,7 +77,7 @@ export default function Login() {
 
     setPortalError(null);
     navigateAfterLogin(user.role);
-  }, [selectedRole, setLocation, user]);
+  }, [selectedRole, user]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,12 +213,3 @@ export default function Login() {
     </div>
   );
 }
-  const navigateAfterLogin = (role: PortalRole) => {
-    const destination = role === "professor" ? "/professor/dashboard" : "/student/scan";
-    setLocation(destination);
-    window.setTimeout(() => {
-      if (window.location.pathname.includes("/login")) {
-        window.location.assign(destination);
-      }
-    }, 350);
-  };
