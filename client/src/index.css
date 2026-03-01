@@ -53,30 +53,30 @@
 
 @layer base {
   :root[data-theme="dark"] {
-    --color-primary: hsl(194 96% 61%);
-    --color-primary-foreground: hsl(223 43% 10%);
-    --color-secondary: hsl(218 30% 19%);
-    --color-secondary-foreground: hsl(210 40% 98%);
-    --color-accent: hsl(316 86% 68%);
-    --color-accent-foreground: hsl(222 47% 11%);
-    --color-background: hsl(230 42% 7%);
-    --color-foreground: hsl(220 38% 96%);
-    --color-card: hsl(227 33% 11%);
-    --color-card-foreground: hsl(220 38% 96%);
-    --color-popover: hsl(227 33% 11%);
-    --color-popover-foreground: hsl(220 38% 96%);
-    --color-muted: hsl(224 27% 16%);
-    --color-muted-foreground: hsl(220 18% 73%);
-    --color-border: hsl(223 24% 24%);
-    --color-input: hsl(223 24% 24%);
-    --color-ring: hsl(194 96% 61%);
-    --color-chart-1: hsl(194 96% 61%);
-    --color-chart-2: hsl(316 86% 68%);
-    --color-chart-3: hsl(174 75% 49%);
-    --color-chart-4: hsl(36 94% 61%);
-    --color-chart-5: hsl(274 80% 70%);
+    --color-primary: hsl(145 64% 31%);
+    --color-primary-foreground: hsl(0 0% 100%);
+    --color-secondary: hsl(0 0% 12%);
+    --color-secondary-foreground: hsl(0 0% 100%);
+    --color-accent: hsl(145 55% 42%);
+    --color-accent-foreground: hsl(0 0% 100%);
+    --color-background: hsl(0 0% 3%);
+    --color-foreground: hsl(0 0% 97%);
+    --color-card: hsl(0 0% 8%);
+    --color-card-foreground: hsl(0 0% 97%);
+    --color-popover: hsl(0 0% 8%);
+    --color-popover-foreground: hsl(0 0% 97%);
+    --color-muted: hsl(0 0% 13%);
+    --color-muted-foreground: hsl(0 0% 75%);
+    --color-border: hsl(0 0% 24%);
+    --color-input: hsl(0 0% 24%);
+    --color-ring: hsl(145 64% 31%);
+    --color-chart-1: hsl(145 64% 31%);
+    --color-chart-2: hsl(145 55% 42%);
+    --color-chart-3: hsl(0 0% 80%);
+    --color-chart-4: hsl(0 0% 60%);
+    --color-chart-5: hsl(0 0% 45%);
     --badge-outline: color-mix(in oklab, var(--color-border) 85%, transparent);
-    --app-bg-gradient: radial-gradient(circle at top left, #151a3d 0%, #0f132d 42%, #090b19 100%);
+    --app-bg-gradient: radial-gradient(circle at top left, #0f2518 0%, #070b08 38%, #000000 100%);
   }
 
   * {

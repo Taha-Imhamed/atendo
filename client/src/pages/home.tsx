@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { ArrowRight, ChartColumn, ScanLine, ShieldCheck, Users } from "lucide-react";
+import { ArrowRight, ChartColumn, Download, ScanLine, ShieldCheck, Users } from "lucide-react";
 import Layout from "@/components/layout";
 import AppLogo from "@/components/app-logo";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,7 +35,7 @@ export default function Home() {
             </Badge>
             <div className="space-y-4">
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-heading font-black leading-tight">
-                Attendance management that professors and students can trust.
+                The new UNYT attendance system.
               </h1>
               <p className="max-w-2xl text-lg text-muted-foreground">
                 Run classes, manage accounts, and capture attendance with cleaner workflows and strong data consistency.
@@ -96,6 +96,37 @@ export default function Home() {
               </CardContent>
             </Card>
           ))}
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-2">
+          <Card className="border-border/70 bg-card/90">
+            <CardHeader>
+              <CardTitle>Student Manual</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Download the student guide for sign-in steps, password change, attendance rules, and excuse requests.
+              </p>
+              <Button asChild variant="outline">
+                <a href="/student-manual.md" download>
+                  Download Student Manual
+                  <Download className="ml-2 h-4 w-4" />
+                </a>
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/70 bg-card/90">
+            <CardHeader>
+              <CardTitle>Attendance Rules</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-muted-foreground">
+              <p>1. Sign in with credentials sent by your professor and change your password immediately.</p>
+              <p>2. Join your correct portal (Professor or Student) and scan only active class QR codes.</p>
+              <p>3. If you miss class or need a day off, submit an excuse request on the platform and notify your professor by email.</p>
+              <p>4. If you forget your password, contact your professor for reset credentials.</p>
+            </CardContent>
+          </Card>
         </section>
       </div>
     </Layout>

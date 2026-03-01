@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { motion } from "framer-motion";
 import { GraduationCap, Lock, User, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,7 +67,7 @@ export default function Login() {
     }
 
     setPortalError(null);
-    setLocation(user.role === "professor" ? "/professor/dashboard" : "/student/scan");
+    navigateAfterLogin(user.role);
   }, [selectedRole, setLocation, user]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -78,7 +77,14 @@ export default function Login() {
 
     try {
       const res = await apiRequest("POST", "/api/auth/login", { username, password });
-      const authed = await res.json();
+      const authed = (await res.json()) as {
+        role: "professor" | "student" | "admin";
+        display_name: string;
+        id: string;
+        email: string;
+        username: string;
+        must_change_password?: boolean;
+      };
       const role = authed.role as "professor" | "student" | "admin";
 
       if (role === "admin") {
@@ -89,13 +95,15 @@ export default function Login() {
         throw new Error(`This is the ${selectedRole} portal. Please use the correct portal.`);
       }
 
-      await queryClient.invalidateQueries({ queryKey: ["me"] });
+      // Avoid blocking navigation on a follow-up network refetch.
+      queryClient.setQueryData(["me"], authed);
+      void queryClient.invalidateQueries({ queryKey: ["me"] });
       toast({
         title: "Signed in",
         description: `Welcome back, ${authed.display_name}.`,
       });
 
-      setLocation(role === "professor" ? "/professor/dashboard" : "/student/scan");
+      navigateAfterLogin(role);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Invalid username or password.";
@@ -113,12 +121,7 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
       <Background3D />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.98, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: "easeOut" }}
-        className="w-full max-w-md"
-      >
+      <div className="w-full max-w-md">
         <Card className="relative glass-card border-border/70 shadow-2xl overflow-hidden">
           <CardHeader className="text-center pb-3 space-y-4">
             <div className="flex justify-start">
@@ -197,7 +200,16 @@ export default function Login() {
             </form>
           </CardContent>
         </Card>
-      </motion.div>
+      </div>
     </div>
   );
 }
+  const navigateAfterLogin = (role: PortalRole) => {
+    const destination = role === "professor" ? "/professor/dashboard" : "/student/scan";
+    setLocation(destination);
+    window.setTimeout(() => {
+      if (window.location.pathname.includes("/login")) {
+        window.location.assign(destination);
+      }
+    }, 350);
+  };
