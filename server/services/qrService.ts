@@ -160,7 +160,7 @@ export const qrService = {
       const qrIssuedAt = options?.qrIssuedAt ?? null;
       const qrExpiresAt = options?.qrExpiresAt ?? null;
 
-      if (!offlineCapturedAt || !qrSignature || !qrIssuedAt || !qrExpiresAt) {
+      if (!qrSignature || !qrIssuedAt || !qrExpiresAt) {
         throw new ApiError(400, "QR token has expired", "token_expired");
       }
 
@@ -178,11 +178,9 @@ export const qrService = {
 
       const payloadIssuedMs = Date.parse(qrIssuedAt);
       const payloadExpiresMs = Date.parse(qrExpiresAt);
-      const capturedMs = Date.parse(offlineCapturedAt);
       if (
         Number.isNaN(payloadIssuedMs) ||
-        Number.isNaN(payloadExpiresMs) ||
-        Number.isNaN(capturedMs)
+        Number.isNaN(payloadExpiresMs)
       ) {
         throw new ApiError(400, "Invalid QR payload timestamp", "invalid_qr_timestamp");
       }
@@ -195,23 +193,37 @@ export const qrService = {
         throw new ApiError(400, "Invalid QR payload timestamp", "invalid_qr_timestamp");
       }
 
-      if (capturedMs < payloadIssuedMs - MAX_CLOCK_SKEW_MS) {
-        throw new ApiError(
-          400,
-          "Offline capture time is invalid",
-          "invalid_offline_capture_time",
-        );
-      }
+      if (offlineCapturedAt) {
+        const capturedMs = Date.parse(offlineCapturedAt);
+        if (Number.isNaN(capturedMs)) {
+          throw new ApiError(
+            400,
+            "Offline capture time is invalid",
+            "invalid_offline_capture_time",
+          );
+        }
 
-      if (capturedMs > nowMs + MAX_CLOCK_SKEW_MS) {
-        throw new ApiError(
-          400,
-          "Offline capture time is invalid",
-          "invalid_offline_capture_time",
-        );
-      }
+        if (capturedMs < payloadIssuedMs - MAX_CLOCK_SKEW_MS) {
+          throw new ApiError(
+            400,
+            "Offline capture time is invalid",
+            "invalid_offline_capture_time",
+          );
+        }
 
-      if (nowMs > payloadExpiresMs + OFFLINE_GRACE_MS + MAX_CLOCK_SKEW_MS) {
+        if (capturedMs > nowMs + MAX_CLOCK_SKEW_MS) {
+          throw new ApiError(
+            400,
+            "Offline capture time is invalid",
+            "invalid_offline_capture_time",
+          );
+        }
+
+        if (nowMs > payloadExpiresMs + OFFLINE_GRACE_MS + MAX_CLOCK_SKEW_MS) {
+          throw new ApiError(400, "QR token has expired", "token_expired");
+        }
+      } else if (nowMs > payloadExpiresMs + MAX_CLOCK_SKEW_MS) {
+        // Online scan tolerance for network/clock drift between devices.
         throw new ApiError(400, "QR token has expired", "token_expired");
       }
     }
