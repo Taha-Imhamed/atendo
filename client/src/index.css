@@ -54,7 +54,7 @@
 @layer base {
   :root[data-theme="dark"] {
     --color-primary: hsl(145 64% 31%);
-    --color-primary-foreground: hsl(0 0% 100%);
+    --color-primary-foreground: hsl(0, 0%, 0%);
     --color-secondary: hsl(0 0% 12%);
     --color-secondary-foreground: hsl(0 0% 100%);
     --color-accent: hsl(145 55% 42%);
