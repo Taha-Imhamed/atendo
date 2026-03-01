@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/table";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, buildApiUrl } from "@/lib/queryClient";
 
 type DashboardCourse = {
   id: string;
@@ -367,7 +367,7 @@ export default function ProfessorRoster() {
     setIsUploadingSheet(true);
 
     try {
-      const res = await fetch("/api/professor/roster-files/import", {
+      const res = await fetch(buildApiUrl("/api/professor/roster-files/import"), {
         method: "POST",
         credentials: "include",
         body: formData,

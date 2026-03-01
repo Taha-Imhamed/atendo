@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Layout from "@/components/layout";
 import QRCodeGenerator from "@/components/qr-generator";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, buildWebSocketUrl } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/use-current-user";
 
@@ -188,10 +188,7 @@ export default function ProfessorSession() {
 
   useEffect(() => {
     if (!sessionId) return;
-    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(
-      `${protocol}://${window.location.host}/?sessionId=${sessionId}`,
-    );
+    const ws = new WebSocket(buildWebSocketUrl(sessionId));
     ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);

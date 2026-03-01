@@ -1,5 +1,32 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+const rawApiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+const apiBaseUrl = rawApiBaseUrl ? rawApiBaseUrl.replace(/\/+$/, "") : "";
+
+export function buildApiUrl(path: string) {
+  if (!path.startsWith("/")) {
+    throw new Error(`API path must start with "/": ${path}`);
+  }
+  return apiBaseUrl ? `${apiBaseUrl}${path}` : path;
+}
+
+export function buildWebSocketUrl(sessionId: string) {
+  const wsBase = (import.meta.env.VITE_WS_URL as string | undefined)?.trim();
+  if (wsBase) {
+    return `${wsBase.replace(/\/+$/, "")}/?sessionId=${encodeURIComponent(sessionId)}`;
+  }
+
+  if (apiBaseUrl) {
+    const wsFromApiBase = apiBaseUrl
+      .replace(/^https:\/\//i, "wss://")
+      .replace(/^http:\/\//i, "ws://");
+    return `${wsFromApiBase}/?sessionId=${encodeURIComponent(sessionId)}`;
+  }
+
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  return `${protocol}://${window.location.host}/?sessionId=${encodeURIComponent(sessionId)}`;
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
@@ -12,7 +39,7 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const res = await fetch(url, {
+  const res = await fetch(buildApiUrl(url), {
     method,
     headers: data ? { "Content-Type": "application/json" } : {},
     body: data ? JSON.stringify(data) : undefined,
@@ -29,7 +56,7 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
+    const res = await fetch(buildApiUrl(queryKey.join("/") as string), {
       credentials: "include",
     });
 

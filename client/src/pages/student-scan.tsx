@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import Layout from "@/components/layout";
 import QRScanner, { type ScanResult } from "@/components/qr-scanner";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, buildApiUrl } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { useToast } from "@/hooks/use-toast";
 import { deleteQueuedScan, getQueueCount, getQueuedScans } from "@/lib/offlineQueue";
@@ -187,7 +187,7 @@ export default function StudentScan() {
     setOfflineStatus("syncing");
     for (const scan of scans) {
       try {
-        const res = await fetch(`/api/rounds/${scan.roundId}/scans`, {
+        const res = await fetch(buildApiUrl(`/api/rounds/${scan.roundId}/scans`), {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -354,7 +354,7 @@ export default function StudentScan() {
           return { success: false, message };
         }
 
-        const res = await fetch(`/api/rounds/${roundId}/scans`, {
+        const res = await fetch(buildApiUrl(`/api/rounds/${roundId}/scans`), {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },

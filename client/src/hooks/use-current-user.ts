@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { buildApiUrl } from "@/lib/queryClient";
 
 export interface CurrentUser {
   id: string;
@@ -13,7 +14,7 @@ export function useCurrentUser() {
   return useQuery<CurrentUser | null>({
     queryKey: ["me"],
     queryFn: async () => {
-      const res = await fetch("/api/auth/me", { credentials: "include" });
+      const res = await fetch(buildApiUrl("/api/auth/me"), { credentials: "include" });
       if (res.status === 401) {
         return null;
       }
