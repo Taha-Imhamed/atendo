@@ -3,9 +3,17 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 const rawApiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
 const apiBaseUrl = rawApiBaseUrl ? rawApiBaseUrl.replace(/\/+$/, "") : "";
 
+function shouldUseSameOriginApi() {
+  if (typeof window === "undefined") return false;
+  return /(?:^|\.)vercel\.app$/i.test(window.location.hostname);
+}
+
 export function buildApiUrl(path: string) {
   if (!path.startsWith("/")) {
     throw new Error(`API path must start with "/": ${path}`);
+  }
+  if (shouldUseSameOriginApi()) {
+    return path;
   }
   return apiBaseUrl ? `${apiBaseUrl}${path}` : path;
 }
