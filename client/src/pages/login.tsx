@@ -42,11 +42,12 @@ export default function Login() {
   const navigateAfterLogin = (role: PortalRole) => {
     const destination = role === "professor" ? "/professor/dashboard" : "/student/scan";
     setLocation(destination);
+    // Retry client-side navigation once for slower mobile browsers.
     window.setTimeout(() => {
       if (window.location.pathname.includes("/login")) {
-        window.location.assign(destination);
+        setLocation(destination);
       }
-    }, 350);
+    }, 200);
   };
 
   useEffect(() => {
