@@ -2,6 +2,9 @@ export type OfflineScan = {
   client_scan_id: string;
   roundId: string;
   token: string;
+  qrSignature?: string;
+  qrIssuedAt?: string;
+  qrExpiresAt?: string;
   latitude?: number;
   longitude?: number;
   deviceFingerprint?: string;

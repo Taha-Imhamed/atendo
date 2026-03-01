@@ -251,6 +251,9 @@ export const attendanceService = {
     deviceFingerprint?: string | null,
     clientScanId?: string | null,
     offlineCapturedAt?: string | null,
+    qrSignature?: string | null,
+    qrIssuedAt?: string | null,
+    qrExpiresAt?: string | null,
   ) {
     const round = await requireActiveRound(db, roundId);
     const session = await requireActiveSession(db, round.session_id);
@@ -293,6 +296,12 @@ export const attendanceService = {
     const tokenEntry = await qrService.validateAndConsumeToken(
       roundId,
       token,
+      {
+        offlineCapturedAt,
+        qrSignature,
+        qrIssuedAt,
+        qrExpiresAt,
+      },
       db,
     );
     const nowMs = Date.now();
@@ -356,6 +365,8 @@ export const attendanceService = {
     const qrPayload = buildQrPayload({
       roundId,
       token: nextToken.rawToken,
+      issuedAt: nextToken.issuedAt,
+      expiresAt: nextToken.expiresAt.toISOString(),
       sessionId: session.id,
       courseId: session.course_id,
       groupId: session.group_id,

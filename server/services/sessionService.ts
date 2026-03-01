@@ -480,14 +480,8 @@ export const sessionService = {
       const qrPayload = buildQrPayload({
         roundId: activeRound.id,
         token: nextToken.rawToken,
-        sessionId,
-        courseId: sessionRow.session.course_id,
-        groupId: sessionRow.session.group_id,
-        geofenceEnabled: activeRound.geofence_enabled,
-        geofenceRadiusM: activeRound.geofence_radius_m,
-        latitude: activeRound.latitude,
-        longitude: activeRound.longitude,
-        isBreakRound: activeRound.is_break_round,
+        issuedAt: nextToken.issuedAt,
+        expiresAt: nextToken.expiresAt.toISOString(),
       });
 
       qr = {

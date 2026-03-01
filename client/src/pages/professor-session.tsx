@@ -454,7 +454,7 @@ export default function ProfessorSession() {
         <div className="grid md:grid-cols-3 gap-6 md:gap-8">
           {/* Main QR Area */}
           <div className="md:order-2 md:col-span-2 space-y-6">
-            <Card className="p-5 sm:p-8 border-border shadow-2xl shadow-primary/5 bg-white flex flex-col items-center justify-center min-h-[360px] sm:min-h-[420px] md:min-h-[500px]">
+            <Card className="p-5 sm:p-8 border-border shadow-2xl shadow-primary/5 bg-card/95 flex flex-col items-center justify-center min-h-[360px] sm:min-h-[420px] md:min-h-[500px]">
               <div className="w-full max-w-md mx-auto">
                 <QRCodeGenerator
                   payload={qrPayload}
@@ -467,13 +467,13 @@ export default function ProfessorSession() {
 
           {/* Sidebar Stats */}
           <div className="md:order-1 space-y-6">
-            <Card className="p-6 bg-primary text-white border-none shadow-xl">
+            <Card className="p-6 bg-primary text-primary-foreground border-none shadow-xl">
               <h3 className="text-sm font-medium opacity-80 uppercase tracking-wider mb-2">Live Attendees</h3>
               <div className="flex items-baseline gap-2">
                 <span className="text-6xl font-bold">{attendees}</span>
                 <span className="opacity-60">/ {totalStudents}</span>
               </div>
-              <div className="mt-4 h-2 bg-white/20 rounded-full overflow-hidden">
+              <div className="mt-4 h-2 bg-primary-foreground/20 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-accent transition-all duration-500" 
                   style={{
@@ -519,12 +519,12 @@ export default function ProfessorSession() {
               </div>
             </Card>
             
-            <div className="p-4 bg-yellow-50 text-yellow-800 rounded-lg text-sm border border-yellow-100">
+            <div className="p-4 bg-accent/10 text-foreground rounded-lg text-sm border border-accent/20">
                <p className="font-semibold mb-1">Security Active</p>
                QR regenerates every 5 seconds and rotates after each scan.
             </div>
 
-            <Card className="p-4 border border-slate-200/60">
+            <Card className="p-4 border border-border/70">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold">Excuse Requests</h3>
                 {excusesQuery.isFetching && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
@@ -536,7 +536,7 @@ export default function ProfessorSession() {
                   {excusesQuery.data.excuses.slice(0, 4).map((excuse) => (
                     <div
                       key={excuse.id}
-                      className="p-3 rounded-lg border border-slate-200 bg-white/60 flex flex-col gap-2"
+                      className="p-3 rounded-lg border border-border bg-background/70 flex flex-col gap-2"
                     >
                       <div className="flex justify-between text-sm font-medium">
                         <span>{excuse.student.displayName}</span>

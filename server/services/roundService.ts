@@ -62,12 +62,8 @@ export const roundService = {
     const qrPayload = buildQrPayload({
       roundId: round.id,
       token: token.rawToken,
-      sessionId,
-      geofenceEnabled: round.geofence_enabled,
-      geofenceRadiusM: round.geofence_radius_m,
-      latitude: round.latitude,
-      longitude: round.longitude,
-      isBreakRound: round.is_break_round,
+      issuedAt: token.issuedAt,
+      expiresAt: token.expiresAt.toISOString(),
     });
 
     emitRoundStarted(sessionId, {

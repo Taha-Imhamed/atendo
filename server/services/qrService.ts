@@ -1,11 +1,42 @@
-import { createHash, randomBytes } from "crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { and, eq, gt, lt } from "drizzle-orm";
 import { db } from "../db";
 import { qr_tokens } from "@shared/schema";
 import { ApiError } from "../errors/apiError";
 import { logger } from "../utils/logger";
 
-const TOKEN_TTL_MS = 15_000;
+const TOKEN_TTL_MS = 20_000;
+const OFFLINE_GRACE_MS =
+  Number(process.env.QR_OFFLINE_GRACE_SECONDS ?? 0) * 1000;
+const MAX_CLOCK_SKEW_MS = 60_000;
+
+function getPayloadSecret() {
+  const secret = process.env.QR_PAYLOAD_SECRET ?? process.env.SESSION_SECRET;
+  if (!secret) {
+    throw new Error("QR_PAYLOAD_SECRET or SESSION_SECRET is required for QR signing");
+  }
+  return secret;
+}
+
+function signQrPayload(params: {
+  roundId: string;
+  token: string;
+  issuedAt: string;
+  expiresAt: string;
+}) {
+  const secret = getPayloadSecret();
+  const payload = `${params.roundId}.${params.token}.${params.issuedAt}.${params.expiresAt}`;
+  return createHmac("sha256", secret).update(payload).digest("hex");
+}
+
+function timingSafeEqualsHex(a: string, b: string) {
+  if (a.length !== b.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(a, "hex"), Buffer.from(b, "hex"));
+  } catch {
+    return false;
+  }
+}
 
 type DbExecutor = Pick<typeof db, "select" | "insert" | "update">;
 
@@ -19,16 +50,39 @@ function hashToken(token: string) {
 export function buildQrPayload(params: {
   roundId: string;
   token: string;
-  sessionId?: string;
-  courseId?: string;
-  groupId?: string;
-  geofenceEnabled?: boolean;
-  latitude?: number | null;
-  longitude?: number | null;
-  geofenceRadiusM?: number | null;
-  isBreakRound?: boolean;
+  issuedAt: string;
+  expiresAt: string;
 }) {
-  return JSON.stringify(params);
+  const signature = signQrPayload({
+    roundId: params.roundId,
+    token: params.token,
+    issuedAt: params.issuedAt,
+    expiresAt: params.expiresAt,
+  });
+
+  return JSON.stringify({
+    roundId: params.roundId,
+    token: params.token,
+    issuedAt: params.issuedAt,
+    expiresAt: params.expiresAt,
+    signature,
+  });
+}
+
+export function verifyQrPayloadSignature(params: {
+  roundId: string;
+  token: string;
+  issuedAt: string;
+  expiresAt: string;
+  signature: string;
+}) {
+  const expected = signQrPayload({
+    roundId: params.roundId,
+    token: params.token,
+    issuedAt: params.issuedAt,
+    expiresAt: params.expiresAt,
+  });
+  return timingSafeEqualsHex(expected, params.signature);
 }
 
 export const qrService = {
@@ -36,6 +90,7 @@ export const qrService = {
    * Create a short-lived QR token for a round.
    */
   async generateToken(roundId: string, executor: DbExecutor = db) {
+    const issuedAt = new Date().toISOString();
     const rawToken = randomBytes(24).toString("hex");
     const expiresAt = new Date(Date.now() + TOKEN_TTL_MS);
     const tokenHash = hashToken(rawToken);
@@ -53,6 +108,7 @@ export const qrService = {
       id: record.id,
       rawToken,
       expiresAt,
+      issuedAt,
     };
   },
 
@@ -63,6 +119,12 @@ export const qrService = {
   async validateAndConsumeToken(
     roundId: string,
     token: string,
+    options?: {
+      offlineCapturedAt?: string | null;
+      qrSignature?: string | null;
+      qrIssuedAt?: string | null;
+      qrExpiresAt?: string | null;
+    },
     executor: DbExecutor = db,
   ) {
     const tokenHash = hashToken(token);
@@ -85,20 +147,83 @@ export const qrService = {
       throw new ApiError(409, "QR token already used", "token_already_consumed");
     }
 
-    const nowIso = new Date().toISOString();
-    if (record.expires_at <= nowIso || new Date(record.expires_at).getTime() < Date.now()) {
-      throw new ApiError(400, "QR token has expired", "token_expired");
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
+    const recordExpiresMs = new Date(record.expires_at).getTime();
+    const isExpired = record.expires_at <= nowIso || recordExpiresMs < nowMs;
+    if (isExpired) {
+      const offlineCapturedAt = options?.offlineCapturedAt ?? null;
+      const qrSignature = options?.qrSignature ?? null;
+      const qrIssuedAt = options?.qrIssuedAt ?? null;
+      const qrExpiresAt = options?.qrExpiresAt ?? null;
+
+      if (!offlineCapturedAt || !qrSignature || !qrIssuedAt || !qrExpiresAt) {
+        throw new ApiError(400, "QR token has expired", "token_expired");
+      }
+
+      if (
+        !verifyQrPayloadSignature({
+          roundId,
+          token,
+          issuedAt: qrIssuedAt,
+          expiresAt: qrExpiresAt,
+          signature: qrSignature,
+        })
+      ) {
+        throw new ApiError(400, "Invalid QR payload signature", "invalid_qr_signature");
+      }
+
+      const payloadIssuedMs = Date.parse(qrIssuedAt);
+      const payloadExpiresMs = Date.parse(qrExpiresAt);
+      const capturedMs = Date.parse(offlineCapturedAt);
+      if (
+        Number.isNaN(payloadIssuedMs) ||
+        Number.isNaN(payloadExpiresMs) ||
+        Number.isNaN(capturedMs)
+      ) {
+        throw new ApiError(400, "Invalid QR payload timestamp", "invalid_qr_timestamp");
+      }
+
+      if (Math.abs(recordExpiresMs - payloadExpiresMs) > 2000) {
+        throw new ApiError(400, "Invalid QR payload timestamp", "invalid_qr_timestamp");
+      }
+
+      if (payloadIssuedMs > payloadExpiresMs) {
+        throw new ApiError(400, "Invalid QR payload timestamp", "invalid_qr_timestamp");
+      }
+
+      if (capturedMs < payloadIssuedMs - MAX_CLOCK_SKEW_MS) {
+        throw new ApiError(
+          400,
+          "Offline capture time is invalid",
+          "invalid_offline_capture_time",
+        );
+      }
+
+      if (capturedMs > nowMs + MAX_CLOCK_SKEW_MS) {
+        throw new ApiError(
+          400,
+          "Offline capture time is invalid",
+          "invalid_offline_capture_time",
+        );
+      }
+
+      if (nowMs > payloadExpiresMs + OFFLINE_GRACE_MS + MAX_CLOCK_SKEW_MS) {
+        throw new ApiError(400, "QR token has expired", "token_expired");
+      }
     }
 
     const [consumed] = await executor
       .update(qr_tokens)
       .set({ consumed: true })
       .where(
-        and(
-          eq(qr_tokens.id, record.id),
-          eq(qr_tokens.consumed, false),
-          gt(qr_tokens.expires_at, nowIso),
-        ),
+        isExpired
+          ? and(eq(qr_tokens.id, record.id), eq(qr_tokens.consumed, false))
+          : and(
+              eq(qr_tokens.id, record.id),
+              eq(qr_tokens.consumed, false),
+              gt(qr_tokens.expires_at, nowIso),
+            ),
       )
       .returning();
 

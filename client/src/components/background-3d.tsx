@@ -1,6 +1,37 @@
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
+import { useEffect, useState } from "react";
 
 export default function Background3D() {
+  const reduceMotion = useReducedMotion();
+  const [lowPowerMode, setLowPowerMode] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const update = () => {
+      const smallScreen = window.innerWidth < 768;
+      const lowCpu =
+        typeof navigator !== "undefined" &&
+        typeof navigator.hardwareConcurrency === "number" &&
+        navigator.hardwareConcurrency <= 4;
+      setLowPowerMode(smallScreen || lowCpu);
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  if (lowPowerMode || reduceMotion) {
+    return (
+      <div
+        className="absolute inset-0 overflow-hidden pointer-events-none"
+        aria-hidden="true"
+      >
+        <div className="absolute -top-12 -left-12 w-56 h-56 rounded-full blur-3xl [background:color-mix(in_oklab,var(--color-primary)_16%,transparent)]" />
+        <div className="absolute bottom-0 right-0 w-64 h-64 rounded-full blur-3xl [background:color-mix(in_oklab,var(--color-accent)_12%,transparent)]" />
+      </div>
+    );
+  }
+
   return (
     <div
       className="absolute inset-0 overflow-hidden pointer-events-none"

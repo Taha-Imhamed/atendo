@@ -255,3 +255,16 @@
     box-shadow: 0 10px 30px color-mix(in oklab, var(--color-primary) 24%, transparent);
   }
 }
+
+@media (max-width: 768px), (prefers-reduced-motion: reduce) {
+  .animate-float,
+  .animate-in-up,
+  .animate-gradient-x,
+  .shiny-effect::after {
+    animation: none !important;
+  }
+
+  .glass-card {
+    backdrop-filter: blur(10px);
+  }
+}

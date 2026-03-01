@@ -12,6 +12,9 @@ export const attendanceController = {
         deviceFingerprint,
         client_scan_id,
         offlineCapturedAt,
+        qrSignature,
+        qrIssuedAt,
+        qrExpiresAt,
       } = req.body;
 
       if (typeof token !== "string" || token.trim() === "") {
@@ -36,6 +39,15 @@ export const attendanceController = {
           : null,
         typeof offlineCapturedAt === "string" && offlineCapturedAt.length > 0
           ? offlineCapturedAt
+          : null,
+        typeof qrSignature === "string" && qrSignature.length > 0
+          ? qrSignature
+          : null,
+        typeof qrIssuedAt === "string" && qrIssuedAt.length > 0
+          ? qrIssuedAt
+          : null,
+        typeof qrExpiresAt === "string" && qrExpiresAt.length > 0
+          ? qrExpiresAt
           : null,
       );
 

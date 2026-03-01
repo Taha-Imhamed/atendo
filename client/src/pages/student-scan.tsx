@@ -19,7 +19,7 @@ import QRScanner, { type ScanResult } from "@/components/qr-scanner";
 import { apiRequest } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { useToast } from "@/hooks/use-toast";
-import { deleteQueuedScan, getQueueCount, getQueuedScans, queueScan } from "@/lib/offlineQueue";
+import { deleteQueuedScan, getQueueCount, getQueuedScans } from "@/lib/offlineQueue";
 
 type EnrollmentResponse = {
   enrollments: Array<{
@@ -66,6 +66,50 @@ type ScanFeedItem = {
   status: "saved" | "synced" | "failed";
   message: string;
 };
+
+function makeFeedItem(
+  status: ScanFeedItem["status"],
+  message: string,
+): ScanFeedItem {
+  return {
+    id: crypto.randomUUID(),
+    time: new Date().toISOString(),
+    status,
+    message,
+  };
+}
+
+function parseQrPayload(raw: string) {
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      roundId: parsed.roundId as string | undefined,
+      token: parsed.token as string | undefined,
+      qrSignature: parsed.signature as string | undefined,
+      qrIssuedAt: parsed.issuedAt as string | undefined,
+      qrExpiresAt: parsed.expiresAt as string | undefined,
+    };
+  } catch {
+    try {
+      const url = new URL(raw);
+      return {
+        roundId: url.searchParams.get("roundId") ?? undefined,
+        token: url.searchParams.get("token") ?? undefined,
+        qrSignature: url.searchParams.get("signature") ?? undefined,
+        qrIssuedAt: url.searchParams.get("issuedAt") ?? undefined,
+        qrExpiresAt: url.searchParams.get("expiresAt") ?? undefined,
+      };
+    } catch {
+      return {
+        roundId: undefined,
+        token: undefined,
+        qrSignature: undefined,
+        qrIssuedAt: undefined,
+        qrExpiresAt: undefined,
+      };
+    }
+  }
+}
 
 export default function StudentScan() {
   const { data: user } = useCurrentUser();
@@ -154,11 +198,18 @@ export default function StudentScan() {
             deviceFingerprint: scan.deviceFingerprint,
             client_scan_id: scan.client_scan_id,
             offlineCapturedAt: scan.capturedAt,
+            qrSignature: scan.qrSignature,
+            qrIssuedAt: scan.qrIssuedAt,
+            qrExpiresAt: scan.qrExpiresAt,
           }),
         });
 
         if (res.ok) {
           await deleteQueuedScan(scan.client_scan_id);
+          setScanFeed((prev) => [
+            makeFeedItem("synced", "Queued scan synced successfully."),
+            ...prev,
+          ].slice(0, 20));
           continue;
         }
 
@@ -169,53 +220,34 @@ export default function StudentScan() {
           body = null;
         }
         const code = body?.code as string | undefined;
-        if (code === "token_expired" || code === "token_already_consumed") {
+        if (
+          code === "token_expired" ||
+          code === "token_already_consumed" ||
+          code === "invalid_qr_signature" ||
+          code === "invalid_qr_timestamp"
+        ) {
           await deleteQueuedScan(scan.client_scan_id);
           setScanFeed((prev) => [
-            {
-              id: crypto.randomUUID(),
-              time: new Date().toISOString(),
-              status: "failed",
-              message: "Queued scan expired before sync.",
-            },
+            makeFeedItem("failed", "Queued scan could not be verified."),
             ...prev,
           ].slice(0, 20));
           continue;
         }
         setOfflineStatus("failed");
         setScanFeed((prev) => [
-          {
-            id: crypto.randomUUID(),
-            time: new Date().toISOString(),
-            status: "failed",
-            message: "Queued scan sync failed.",
-          },
+          makeFeedItem("failed", "Queued scan sync failed."),
           ...prev,
         ].slice(0, 20));
         return;
       } catch {
         setOfflineStatus("failed");
         setScanFeed((prev) => [
-          {
-            id: crypto.randomUUID(),
-            time: new Date().toISOString(),
-            status: "failed",
-            message: "No internet. Could not sync queued scan.",
-          },
+          makeFeedItem("failed", "No internet. Could not sync queued scan."),
           ...prev,
         ].slice(0, 20));
         return;
       }
 
-      setScanFeed((prev) => [
-        {
-          id: crypto.randomUUID(),
-          time: new Date().toISOString(),
-          status: "synced",
-          message: "Queued scan synced successfully.",
-        },
-        ...prev,
-      ].slice(0, 20));
     }
 
     setOfflineStatus("synced");
@@ -270,10 +302,15 @@ export default function StudentScan() {
       const clientScanId = crypto.randomUUID();
 
       try {
-        const parsed = JSON.parse(data);
-        const roundId = parsed.roundId;
-        const token = parsed.token;
-        if (!roundId || !token) {
+        const { roundId, token, qrSignature, qrIssuedAt, qrExpiresAt } = parseQrPayload(data);
+        console.debug("[scan] payload", {
+          roundId,
+          token: token ? "present" : "missing",
+          qrSignature: qrSignature ? "present" : "missing",
+          qrIssuedAt,
+          qrExpiresAt,
+        });
+        if (!roundId || !token || !qrSignature || !qrIssuedAt || !qrExpiresAt) {
           throw new Error("Invalid QR payload");
         }
 
@@ -301,31 +338,20 @@ export default function StudentScan() {
           longitude: coords?.longitude,
           deviceFingerprint,
           client_scan_id: clientScanId,
-          offlineCapturedAt: capturedAt,
+          qrSignature,
+          qrIssuedAt,
+          qrExpiresAt,
         };
 
         if (!navigator.onLine) {
-          await queueScan({
-            client_scan_id: clientScanId,
-            roundId,
-            token,
-            latitude: coords?.latitude,
-            longitude: coords?.longitude,
-            deviceFingerprint: deviceFingerprint ?? undefined,
-            capturedAt,
-          });
-          setOfflineStatus("saved");
-          refreshQueueCount();
+          const message = "Offline scanning is disabled. Please reconnect and try again.";
+          toast({ variant: "destructive", title: "Scan failed", description: message });
+          setOfflineStatus("failed");
           setScanFeed((prev) => [
-            {
-              id: crypto.randomUUID(),
-              time: new Date().toISOString(),
-              status: "saved",
-              message: "Scan saved offline.",
-            },
+            makeFeedItem("failed", message),
             ...prev,
           ].slice(0, 20));
-          return { success: true, message: "Saved offline." };
+          return { success: false, message };
         }
 
         const res = await fetch(`/api/rounds/${roundId}/scans`, {
@@ -337,19 +363,17 @@ export default function StudentScan() {
 
         if (!res.ok) {
           const json = await res.json().catch(() => null);
+          console.debug("[scan] response", res.status, json);
           throw new Error(json?.message ?? "Could not record attendance.");
         }
+
+        console.debug("[scan] response", res.status, "ok");
 
         toast({ title: "Attendance recorded", description: "You are checked in." });
         attendanceQuery.refetch();
         attendanceHistoryQuery.refetch();
         setScanFeed((prev) => [
-          {
-            id: crypto.randomUUID(),
-            time: new Date().toISOString(),
-            status: "synced",
-            message: "Scan saved on server.",
-          },
+          makeFeedItem("synced", "Scan saved on server."),
           ...prev,
         ].slice(0, 20));
         return { success: true, message: "Attendance recorded successfully." };
@@ -357,12 +381,7 @@ export default function StudentScan() {
         const message = error instanceof Error ? error.message : "Scan failed.";
         toast({ variant: "destructive", title: "Scan failed", description: message });
         setScanFeed((prev) => [
-          {
-            id: crypto.randomUUID(),
-            time: new Date().toISOString(),
-            status: "failed",
-            message,
-          },
+          makeFeedItem("failed", message),
           ...prev,
         ].slice(0, 20));
         return { success: false, message };
@@ -414,12 +433,7 @@ export default function StudentScan() {
         attendanceHistoryQuery.refetch(),
       ]);
       setScanFeed((prev) => [
-        {
-          id: crypto.randomUUID(),
-          time: new Date().toISOString(),
-          status: "synced",
-          message: "Manual class ID check-in saved.",
-        },
+        makeFeedItem("synced", "Manual class ID check-in saved."),
         ...prev,
       ].slice(0, 20));
     } catch (error) {
@@ -431,12 +445,7 @@ export default function StudentScan() {
         description: message,
       });
       setScanFeed((prev) => [
-        {
-          id: crypto.randomUUID(),
-          time: new Date().toISOString(),
-          status: "failed",
-          message,
-        },
+        makeFeedItem("failed", message),
         ...prev,
       ].slice(0, 20));
     } finally {

@@ -62,7 +62,13 @@ if (process.env.NODE_ENV === "production") {
   );
 }
 
-const SENSITIVE_KEYS = new Set(["token", "password", "rawToken", "qrPayload"]);
+const SENSITIVE_KEYS = new Set([
+  "token",
+  "password",
+  "rawToken",
+  "qrPayload",
+  "qrSignature",
+]);
 
 function redact(value: unknown): unknown {
   if (Array.isArray(value)) {

@@ -15,20 +15,33 @@ interface QRScannerProps {
   onScan: (decodedText: string) => Promise<ScanResult>;
 }
 
+function safeClear(scanner: Html5Qrcode) {
+  try {
+    scanner.clear();
+  } catch {
+    // Ignore scanner clear errors from browser/runtime differences.
+  }
+}
+
 export default function QRScanner({ onScan }: QRScannerProps) {
   const [error, setError] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const processingScanRef = useRef(false);
+  const resetTimeoutRef = useRef<number | null>(null);
   const [scannerActive, setScannerActive] = useState(false);
   const [qrBoxSize, setQrBoxSize] = useState(260);
   const [status, setStatus] = useState<ScanStatus>("idle");
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [requestingPermission, setRequestingPermission] = useState(false);
   const [processingScan, setProcessingScan] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const scanBoxSize = Math.floor(qrBoxSize);
 
   useEffect(() => {
     const updateSize = () => {
       if (typeof window === "undefined") return;
-      const calculated = Math.min(340, Math.max(220, Math.floor(window.innerWidth * 0.75)));
+      setIsMobileViewport(window.innerWidth < 768);
+      const calculated = Math.min(300, Math.max(180, Math.floor(window.innerWidth * 0.72)));
       setQrBoxSize(calculated);
     };
 
@@ -39,14 +52,21 @@ export default function QRScanner({ onScan }: QRScannerProps) {
 
   useEffect(() => {
     return () => {
+      if (resetTimeoutRef.current !== null) {
+        window.clearTimeout(resetTimeoutRef.current);
+      }
       const scanner = scannerRef.current;
       if (!scanner) return;
-      scanner
-        .stop()
-        .catch(() => undefined)
-        .finally(() => {
-          scanner.clear().catch(() => undefined);
-        });
+      if (scanner.getState && scanner.getState() === 2) {
+        scanner
+          .stop()
+          .catch(() => undefined)
+          .finally(() => {
+            safeClear(scanner);
+          });
+      } else {
+        safeClear(scanner);
+      }
     };
   }, []);
 
@@ -75,76 +95,149 @@ export default function QRScanner({ onScan }: QRScannerProps) {
     setStatus("idle");
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
-      });
-      stream.getTracks().forEach((track) => track.stop());
-
       const previous = scannerRef.current;
       if (previous) {
-        await previous
-          .stop()
-          .catch(() => undefined)
-          .finally(() => {
-            previous.clear().catch(() => undefined);
-          });
+        if (previous.getState && previous.getState() === 2) {
+          await previous
+            .stop()
+            .catch(() => undefined)
+            .finally(() => {
+              safeClear(previous);
+            });
+        } else {
+          safeClear(previous);
+        }
+      }
+
+      setScannerActive(true);
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+
+      const readerElement = document.getElementById("reader");
+      if (!readerElement) {
+        throw new Error("Scanner viewport failed to mount. Please try again.");
       }
 
       const scanner = new Html5Qrcode("reader");
       scannerRef.current = scanner;
 
-      const cameras = await Html5Qrcode.getCameras();
-      const backCamera = cameras.find((camera) => /back|rear|environment/i.test(camera.label));
-      const cameraConfig = backCamera
-        ? { deviceId: { exact: backCamera.id } }
-        : { facingMode: "environment" };
+      let cameraConfig: { deviceId: { exact: string } } | { facingMode: string } = {
+        facingMode: "environment",
+      };
+      try {
+        const cameras = await Html5Qrcode.getCameras();
+        const backCamera = cameras.find((camera) => /back|rear|environment/i.test(camera.label));
+        if (backCamera) {
+          cameraConfig = { deviceId: { exact: backCamera.id } };
+        }
+      } catch {
+        cameraConfig = { facingMode: "environment" };
+      }
 
-      await scanner.start(
-        cameraConfig,
-        {
-          fps: 12,
-          qrbox: { width: qrBoxSize, height: qrBoxSize },
-          aspectRatio: 1,
-          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+      const scannerConfig = {
+        fps: isMobileViewport ? 12 : 16,
+        qrbox: { width: scanBoxSize, height: scanBoxSize },
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        disableFlip: false,
+        rememberLastUsedCamera: true,
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        videoConstraints: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
         },
-        async (decodedText) => {
-          if (processingScan) return;
+      } as const;
+
+      const onSuccess = async (decodedText: string) => {
+          if (processingScanRef.current) return;
+          processingScanRef.current = true;
           setProcessingScan(true);
           setStatus("processing");
 
-          await scanner
-            .stop()
-            .catch(() => undefined)
-            .finally(() => {
-              scanner.clear().catch(() => undefined);
-            });
-          setScannerActive(false);
+          try {
+            await scanner.pause(true);
+          } catch {
+            // Ignore pause failures for older html5-qrcode versions.
+          }
 
           try {
             const result = await onScan(decodedText);
             setResultMessage(result?.message ?? "Attendance recorded successfully.");
-            setStatus(result?.success === false ? "error" : "success");
+            if (result?.success === false) {
+              setStatus("error");
+              try {
+                await scanner.resume();
+              } catch {
+                // Ignore resume failures for older html5-qrcode versions.
+              }
+              if (resetTimeoutRef.current !== null) {
+                window.clearTimeout(resetTimeoutRef.current);
+              }
+              resetTimeoutRef.current = window.setTimeout(() => {
+                setStatus("idle");
+                setResultMessage(null);
+              }, 2500);
+            } else {
+              setStatus("success");
+              if (scanner.getState && scanner.getState() === 2) {
+                await scanner
+                  .stop()
+                  .catch(() => undefined)
+                  .finally(() => {
+                    safeClear(scanner);
+                  });
+              } else {
+                safeClear(scanner);
+              }
+              setScannerActive(false);
+            }
           } catch (err) {
             setResultMessage(err instanceof Error ? err.message : "Could not record attendance.");
             setStatus("error");
+            try {
+              await scanner.resume();
+            } catch {
+              // Ignore resume failures for older html5-qrcode versions.
+            }
+            if (resetTimeoutRef.current !== null) {
+              window.clearTimeout(resetTimeoutRef.current);
+            }
+            resetTimeoutRef.current = window.setTimeout(() => {
+              setStatus("idle");
+              setResultMessage(null);
+            }, 2500);
           } finally {
+            processingScanRef.current = false;
             setProcessingScan(false);
           }
-        },
-        () => undefined,
-      );
+      };
 
-      setScannerActive(true);
+      try {
+        await scanner.start(
+          cameraConfig,
+          scannerConfig,
+          onSuccess,
+          () => undefined,
+        );
+      } catch {
+        await scanner.start(
+          { facingMode: "environment" },
+          scannerConfig,
+          onSuccess,
+          () => undefined,
+        );
+      }
     } catch (err) {
       const message =
-        err instanceof Error
+        err instanceof Error && err.message
           ? err.message
-          : "Camera permission was denied. Please allow access and try again.";
+          : typeof err === "string" && err
+            ? err
+            : "Could not start the camera. Please try again.";
       setError(message);
       setScannerActive(false);
       const scanner = scannerRef.current;
       if (scanner) {
-        scanner.clear().catch(() => undefined);
+        safeClear(scanner);
       }
     } finally {
       setRequestingPermission(false);
@@ -154,8 +247,8 @@ export default function QRScanner({ onScan }: QRScannerProps) {
   return (
     <div className="w-full max-w-xl mx-auto space-y-4" aria-live="polite">
       {!scannerActive && !showResult && (
-        <Card className="p-5 sm:p-6 bg-white/90 border border-border shadow-xl rounded-2xl text-center space-y-3">
-          <p className="text-lg font-semibold text-slate-900">Allow camera access</p>
+        <Card className="p-5 sm:p-6 bg-card/95 border border-border shadow-xl rounded-2xl text-center space-y-3">
+          <p className="text-lg font-semibold text-foreground">Allow camera access</p>
           <p className="text-sm text-muted-foreground">
             We need your camera to scan the QR code displayed by your professor.
           </p>
@@ -178,7 +271,7 @@ export default function QRScanner({ onScan }: QRScannerProps) {
           <div className="absolute inset-0 pointer-events-none border-[24px] sm:border-[36px] border-black/50 z-10" />
           <div
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-2 border-accent z-20 animate-pulse rounded-lg"
-            style={{ width: qrBoxSize, height: qrBoxSize }}
+            style={{ width: scanBoxSize, height: scanBoxSize }}
           />
           <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs text-white/80 bg-black/60 px-3 py-1.5 rounded-full">
             Align the QR inside the frame
@@ -188,7 +281,7 @@ export default function QRScanner({ onScan }: QRScannerProps) {
 
       {!scannerActive && showResult && (
         <Card
-          className="p-6 sm:p-8 bg-white/90 border border-slate-200 rounded-xl flex flex-col items-center text-center shadow-lg"
+          className="p-6 sm:p-8 bg-card/95 border border-border rounded-xl flex flex-col items-center text-center shadow-lg"
           role="status"
         >
           {status === "processing" && (
@@ -236,8 +329,14 @@ export default function QRScanner({ onScan }: QRScannerProps) {
         </p>
       )}
 
+      {scannerActive && status === "error" && resultMessage && (
+        <p className="text-center text-sm text-destructive mt-4 px-2">
+          {resultMessage}
+        </p>
+      )}
+
       {error && !scannerActive && (
-        <div className="p-4 bg-red-50 text-red-700 rounded-lg flex items-center gap-2">
+        <div className="p-4 bg-destructive/10 text-destructive rounded-lg border border-destructive/20 flex items-center gap-2">
           <AlertCircle className="w-5 h-5" aria-hidden="true" />
           <p>{error}</p>
         </div>

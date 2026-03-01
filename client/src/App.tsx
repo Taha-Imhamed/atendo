@@ -1,16 +1,18 @@
+import { Suspense, lazy } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
-import Home from "@/pages/home";
-import Login from "@/pages/login";
-import ProfessorDashboard from "@/pages/professor-dashboard";
-import ProfessorSession from "@/pages/professor-session";
-import ProfessorStats from "@/pages/professor-stats";
-import StudentScan from "@/pages/student-scan";
-import ProfessorRoster from "@/pages/professor-roster";
+
+const NotFound = lazy(() => import("@/pages/not-found"));
+const Home = lazy(() => import("@/pages/home"));
+const Login = lazy(() => import("@/pages/login"));
+const ProfessorDashboard = lazy(() => import("@/pages/professor-dashboard"));
+const ProfessorSession = lazy(() => import("@/pages/professor-session"));
+const ProfessorStats = lazy(() => import("@/pages/professor-stats"));
+const StudentScan = lazy(() => import("@/pages/student-scan"));
+const ProfessorRoster = lazy(() => import("@/pages/professor-roster"));
 
 function Router() {
   return (
@@ -34,7 +36,15 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <Router />
+        <Suspense
+          fallback={
+            <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">
+              Loading...
+            </div>
+          }
+        >
+          <Router />
+        </Suspense>
       </TooltipProvider>
     </QueryClientProvider>
   );
