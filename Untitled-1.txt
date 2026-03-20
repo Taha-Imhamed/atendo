@@ -1,2 +1,7 @@
-professor / Professor123!
-student / Student123! 
+professor / Prof12345
+
+
+
+admin
+adminpass
+

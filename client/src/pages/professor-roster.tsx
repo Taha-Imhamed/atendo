@@ -94,6 +94,17 @@ type ManagedUser = {
   }>;
 };
 
+type AdminProfessor = {
+  id: string;
+  username: string;
+  email: string;
+  display_name: string;
+  created_at: string;
+  last_login_at: string | null;
+  courseCount: number;
+  studentCount: number;
+};
+
 type RosterSettings = {
   showGroupPicker: boolean;
   showCreateEnroll: boolean;
@@ -114,6 +125,7 @@ export default function ProfessorRoster() {
   const { toast } = useToast();
   const { data: user, isLoading: isUserLoading } = useCurrentUser();
   const isProfessor = user?.role === "professor" || user?.role === "admin";
+  const isAdmin = user?.role === "admin";
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const hasAppliedPrefillRef = useRef(false);
 
@@ -144,6 +156,15 @@ export default function ProfessorRoster() {
   const [isUploadingSheet, setIsUploadingSheet] = useState(false);
   const [isDownloadingAccounts, setIsDownloadingAccounts] = useState(false);
   const [sendingCredentialId, setSendingCredentialId] = useState<string | null>(null);
+  const [assigningStudentId, setAssigningStudentId] = useState<string | null>(
+    null,
+  );
+  const [deletingProfessorId, setDeletingProfessorId] = useState<string | null>(
+    null,
+  );
+  const [resettingProfessorId, setResettingProfessorId] = useState<string | null>(
+    null,
+  );
   const [settings, setSettings] = useState<RosterSettings>(DEFAULT_SETTINGS);
   const [profileState, setProfileState] = useState({
     display_name: "",
@@ -276,6 +297,15 @@ export default function ProfessorRoster() {
       return res.json();
     },
     enabled: isProfessor,
+  });
+
+  const adminProfessorsQuery = useQuery<{ professors: AdminProfessor[] }>({
+    queryKey: ["admin", "professors"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/admin/professors");
+      return res.json();
+    },
+    enabled: isAdmin,
   });
 
   const courseOptions = useMemo(() => {
@@ -619,6 +649,94 @@ export default function ProfessorRoster() {
       });
     } finally {
       setSendingCredentialId(null);
+    }
+  };
+
+  const handleAssignStudentToGroup = async (studentId: string, displayName: string) => {
+    if (!selectedGroupId) {
+      toast({
+        variant: "destructive",
+        title: "Pick a group",
+        description: "Select a class and group before assigning students.",
+      });
+      return;
+    }
+
+    setAssigningStudentId(studentId);
+    try {
+      await apiRequest(
+        "POST",
+        `/api/professor/groups/${selectedGroupId}/enrollments`,
+        { studentId },
+      );
+      toast({
+        title: "Student assigned",
+        description: `${displayName} was added to the selected group.`,
+      });
+      await invalidateRosterQueries();
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Assign failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setAssigningStudentId(null);
+    }
+  };
+
+  const handleDeleteProfessor = async (professor: AdminProfessor) => {
+    if (!isAdmin) return;
+    const confirm = window.confirm(
+      `Delete ${professor.display_name} and all of their courses, sessions, and attendance data?`,
+    );
+    if (!confirm) return;
+
+    setDeletingProfessorId(professor.id);
+    try {
+      await apiRequest("DELETE", `/api/admin/professors/${professor.id}`);
+      toast({
+        title: "Professor deleted",
+        description: `${professor.display_name} was removed.`,
+      });
+      await adminProfessorsQuery.refetch();
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Delete failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setDeletingProfessorId(null);
+    }
+  };
+
+  const handleResetProfessorPassword = async (professor: AdminProfessor) => {
+    if (!isAdmin) return;
+    const confirm = window.confirm(
+      `Reset password for ${professor.display_name}? They will be required to change it on next login.`,
+    );
+    if (!confirm) return;
+
+    setResettingProfessorId(professor.id);
+    try {
+      const res = await apiRequest(
+        "PATCH",
+        `/api/admin/professors/${professor.id}/password`,
+      );
+      const data = (await res.json()) as { temporaryPassword: string };
+      toast({
+        title: "Password reset",
+        description: `Temporary password for ${professor.username}: ${data.temporaryPassword}`,
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Reset failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setResettingProfessorId(null);
     }
   };
 
@@ -1083,6 +1201,49 @@ export default function ProfessorRoster() {
                     <p className="text-xs text-muted-foreground">
                       Paste rows like: username TAB full name. Header row is optional.
                     </p>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label htmlFor="quick-course-select">Class</Label>
+                        <Select
+                          value={selectedCourseId}
+                          onValueChange={setSelectedCourseId}
+                          disabled={coursesQuery.isLoading || courseOptions.length === 0}
+                        >
+                          <SelectTrigger id="quick-course-select" className="h-10">
+                            <SelectValue placeholder="Select a class" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {courseOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="quick-group-select">Group</Label>
+                        <Select
+                          value={selectedGroupId}
+                          onValueChange={setSelectedGroupId}
+                          disabled={coursesQuery.isLoading || groupOptions.length === 0}
+                        >
+                          <SelectTrigger id="quick-group-select" className="h-10">
+                            <SelectValue placeholder="Select a group" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {groupOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Students will be assigned to this group.
+                        </p>
+                      </div>
+                    </div>
                     <textarea
                       className="min-h-[120px] w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                       placeholder={"username\tFull Name\n040223029\tAmbra Boci\n040223058\tAnas Abusifritah"}
@@ -1242,6 +1403,30 @@ export default function ProfessorRoster() {
                           {row.student.username}
                         </TableCell>
                         <TableCell>
+                          {row.role === "student" ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={
+                                assigningStudentId === row.id ||
+                                !selectedGroupId ||
+                                alreadyInSelectedGroup
+                              }
+                              onClick={() =>
+                                handleAssignStudentToGroup(row.id, row.display_name)
+                              }
+                            >
+                              {alreadyInSelectedGroup
+                                ? "Assigned"
+                                : assigningStudentId === row.id
+                                  ? "Assigning..."
+                                  : "Assign"}
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">â€”</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
                           <Button
                             size="sm"
                             variant="outline"
@@ -1293,7 +1478,7 @@ export default function ProfessorRoster() {
               </Button>
             </div>
             <p className="text-sm text-muted-foreground">
-              View and edit your managed users. Students can still change their own passwords.
+              View and edit your managed users. Use Assign to add students to the selected group above.
             </p>
           </CardHeader>
           <CardContent>
@@ -1311,12 +1496,18 @@ export default function ProfessorRoster() {
                     <TableHead>Groups</TableHead>
                     <TableHead>Last login</TableHead>
                     <TableHead>Send</TableHead>
+                    <TableHead>Assign</TableHead>
                     <TableHead className="w-32"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {managedUsersQuery.data.users.map((row) => {
                     const editing = editingUserId === row.id;
+                    const alreadyInSelectedGroup =
+                      row.role === "student" &&
+                      row.assignments.some(
+                        (assignment) => assignment.groupId === selectedGroupId,
+                      );
                     return (
                       <TableRow key={row.id}>
                         <TableCell>
@@ -1372,14 +1563,18 @@ export default function ProfessorRoster() {
                         <TableCell className="text-xs text-muted-foreground">
                           {row.role === "student" && row.assignments.length
                             ? row.assignments.map((a) => a.courseCode).join(", ")
-                            : "-"}
+                            : row.role === "student"
+                              ? "Not assigned"
+                              : "-"}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {row.role === "student" && row.assignments.length
                             ? row.assignments
                                 .map((a) => `${a.courseCode}:${a.groupName}`)
                                 .join(", ")
-                            : "-"}
+                            : row.role === "student"
+                              ? "Not assigned"
+                              : "-"}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {row.last_login_at
@@ -1440,6 +1635,81 @@ export default function ProfessorRoster() {
             )}
           </CardContent>
         </Card>
+
+        {isAdmin && (
+          <Card className="border-border/70 shadow-sm">
+            <CardHeader>
+              <CardTitle>Professor accounts</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Admins can review professor profiles and remove accounts when needed.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {adminProfessorsQuery.isLoading ? (
+                <p className="text-sm text-muted-foreground">Loading professors...</p>
+              ) : adminProfessorsQuery.data?.professors.length ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Username</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Courses</TableHead>
+                      <TableHead>Students</TableHead>
+                      <TableHead>Last login</TableHead>
+                      <TableHead className="w-40"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {adminProfessorsQuery.data.professors.map((professor) => (
+                      <TableRow key={professor.id}>
+                        <TableCell className="font-medium">
+                          {professor.display_name}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {professor.username}
+                        </TableCell>
+                        <TableCell>{professor.email}</TableCell>
+                        <TableCell>{professor.courseCount}</TableCell>
+                        <TableCell>{professor.studentCount}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {professor.last_login_at
+                            ? new Date(professor.last_login_at).toLocaleString()
+                            : "Never"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={resettingProfessorId === professor.id}
+                              onClick={() => handleResetProfessorPassword(professor)}
+                            >
+                              Reset
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={deletingProfessorId === professor.id}
+                              onClick={() => handleDeleteProfessor(professor)}
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No professor accounts found.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </Layout>
   );

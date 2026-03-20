@@ -101,6 +101,23 @@ type CourseSummaryResponse = {
   }>;
 };
 
+type ManagedUser = {
+  id: string;
+  role: "professor" | "student" | "admin";
+  username: string;
+  email: string;
+  display_name: string;
+  created_at: string;
+  last_login_at: string | null;
+  assignments: Array<{
+    courseId: string;
+    courseCode: string;
+    courseName: string;
+    groupId: string;
+    groupName: string;
+  }>;
+};
+
 export default function ProfessorDashboard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -118,6 +135,12 @@ export default function ProfessorDashboard() {
   });
   const courses = coursesQuery.data?.courses ?? [];
   const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [selectedRosterCourseId, setSelectedRosterCourseId] = useState("");
+  const [selectedRosterGroupId, setSelectedRosterGroupId] = useState("");
+  const [selectedRosterStudentIds, setSelectedRosterStudentIds] = useState<
+    string[]
+  >([]);
+  const [assigningRosterStudents, setAssigningRosterStudents] = useState(false);
   const [selectedLogDate, setSelectedLogDate] = useState("");
   const [selectedLogCourse, setSelectedLogCourse] = useState("all");
   const [accountState, setAccountState] = useState({
@@ -136,6 +159,13 @@ export default function ProfessorDashboard() {
   const [groupDrafts, setGroupDrafts] = useState<
     Record<string, { name: string; meeting_schedule: string }>
   >({});
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [assignCourseId, setAssignCourseId] = useState<string>("");
+  const [assignGroupId, setAssignGroupId] = useState<string>("");
+  const [assignSelectedStudentIds, setAssignSelectedStudentIds] = useState<
+    string[]
+  >([]);
+  const [assigningStudents, setAssigningStudents] = useState(false);
 
   const generateRandomPassword = (length = 12) => {
     const alphabet =
@@ -178,6 +208,15 @@ export default function ProfessorDashboard() {
     enabled: isProfessor && Boolean(selectedCourseId),
   });
 
+  const managedUsersQuery = useQuery<{ users: ManagedUser[] }>({
+    queryKey: ["professor", "users"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/professor/users");
+      return res.json();
+    },
+    enabled: isProfessor,
+  });
+
   useEffect(() => {
     if (isUserLoading) {
       return;
@@ -210,6 +249,116 @@ export default function ProfessorDashboard() {
       setSelectedCourseId(firstCourse.id);
     }
   }, [courses, selectedCourseId]);
+
+  const assignCourse = useMemo(
+    () => courses.find((course) => course.id === assignCourseId),
+    [courses, assignCourseId],
+  );
+
+  useEffect(() => {
+    if (!assignCourse) {
+      setAssignGroupId("");
+      return;
+    }
+    if (!assignCourse.groups.length) {
+      setAssignGroupId("");
+      return;
+    }
+    if (!assignCourse.groups.some((group) => group.id === assignGroupId)) {
+      setAssignGroupId(assignCourse.groups[0].id);
+    }
+  }, [assignCourse, assignGroupId]);
+
+  useEffect(() => {
+    if (selectedRosterCourseId) {
+      return;
+    }
+    const firstCourse = courses[0];
+    if (firstCourse) {
+      setSelectedRosterCourseId(firstCourse.id);
+    }
+  }, [courses, selectedRosterCourseId]);
+
+  const rosterGroupOptions = useMemo(() => {
+    const course = courses.find((item) => item.id === selectedRosterCourseId);
+    return course?.groups ?? [];
+  }, [courses, selectedRosterCourseId]);
+
+  useEffect(() => {
+    if (!rosterGroupOptions.length) {
+      setSelectedRosterGroupId("");
+      return;
+    }
+    if (!rosterGroupOptions.some((group) => group.id === selectedRosterGroupId)) {
+      setSelectedRosterGroupId(rosterGroupOptions[0].id);
+    }
+  }, [rosterGroupOptions, selectedRosterGroupId]);
+
+  const rosterStudents = useMemo(
+    () =>
+      (managedUsersQuery.data?.users ?? []).filter(
+        (user) => user.role === "student",
+      ),
+    [managedUsersQuery.data?.users],
+  );
+
+  const toggleRosterStudent = (studentId: string) => {
+    setSelectedRosterStudentIds((prev) =>
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId],
+    );
+  };
+
+  const handleAssignRosterStudents = async () => {
+    if (!selectedRosterGroupId) {
+      toast({
+        variant: "destructive",
+        title: "Pick a group",
+        description: "Select a class group before assigning students.",
+      });
+      return;
+    }
+    if (!selectedRosterStudentIds.length) {
+      toast({
+        variant: "destructive",
+        title: "No students selected",
+        description: "Select at least one student to assign.",
+      });
+      return;
+    }
+
+    setAssigningRosterStudents(true);
+    const results = await Promise.allSettled(
+      selectedRosterStudentIds.map((studentId) =>
+        apiRequest(
+          "POST",
+          `/api/professor/groups/${selectedRosterGroupId}/enrollments`,
+          { studentId },
+        ),
+      ),
+    );
+    const successCount = results.filter((r) => r.status === "fulfilled").length;
+    const failCount = results.length - successCount;
+
+    if (successCount > 0) {
+      toast({
+        title: "Students assigned",
+        description: `${successCount} student(s) added to the group.`,
+      });
+    }
+    if (failCount > 0) {
+      toast({
+        variant: "destructive",
+        title: "Some assignments failed",
+        description: `${failCount} student(s) could not be assigned.`,
+      });
+    }
+
+    setAssigningRosterStudents(false);
+    setSelectedRosterStudentIds([]);
+    await Promise.all([coursesQuery.refetch(), managedUsersQuery.refetch()]);
+  };
 
   useEffect(() => {
     setSelectedLogCourse("all");
@@ -509,6 +658,80 @@ export default function ProfessorDashboard() {
     }
   };
 
+  const openAssignDialog = (course: DashboardCourse) => {
+    if (!course.groups.length) {
+      toast({
+        variant: "destructive",
+        title: "No group found",
+        description: "Create a group first, then assign students.",
+      });
+      return;
+    }
+    setAssignCourseId(course.id);
+    setAssignGroupId(course.groups[0].id);
+    setAssignSelectedStudentIds([]);
+    setAssignDialogOpen(true);
+  };
+
+  const toggleStudentSelection = (studentId: string) => {
+    setAssignSelectedStudentIds((prev) =>
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId],
+    );
+  };
+
+  const handleAssignStudents = async () => {
+    if (!assignGroupId) {
+      toast({
+        variant: "destructive",
+        title: "Pick a group",
+        description: "Select a group before assigning students.",
+      });
+      return;
+    }
+    if (!assignSelectedStudentIds.length) {
+      toast({
+        variant: "destructive",
+        title: "No students selected",
+        description: "Select at least one student to assign.",
+      });
+      return;
+    }
+
+    setAssigningStudents(true);
+    const results = await Promise.allSettled(
+      assignSelectedStudentIds.map((studentId) =>
+        apiRequest(
+          "POST",
+          `/api/professor/groups/${assignGroupId}/enrollments`,
+          { studentId },
+        ),
+      ),
+    );
+    const successCount = results.filter((r) => r.status === "fulfilled").length;
+    const failCount = results.length - successCount;
+
+    if (successCount > 0) {
+      toast({
+        title: "Students assigned",
+        description: `${successCount} student(s) added to the group.`,
+      });
+    }
+    if (failCount > 0) {
+      toast({
+        variant: "destructive",
+        title: "Some assignments failed",
+        description: `${failCount} student(s) could not be assigned.`,
+      });
+    }
+
+    setAssigningStudents(false);
+    setAssignSelectedStudentIds([]);
+    setAssignDialogOpen(false);
+    await coursesQuery.refetch();
+  };
+
   const totalStudents = courses.reduce(
     (sum, course) => sum + course.totalStudents,
     0,
@@ -522,6 +745,142 @@ export default function ProfessorDashboard() {
 
   return (
     <Layout role="professor">
+      <AlertDialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+        <AlertDialogContent className="max-w-3xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Assign students to a group</AlertDialogTitle>
+            <AlertDialogDescription>
+              Pick a class group, select students, then assign them in one click.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="assign-course">Course</Label>
+                <Select
+                  value={assignCourseId}
+                  onValueChange={(value) => {
+                    setAssignCourseId(value);
+                    setAssignSelectedStudentIds([]);
+                  }}
+                >
+                  <SelectTrigger id="assign-course" className="h-11">
+                    <SelectValue placeholder="Select a course" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {courses.map((course) => (
+                      <SelectItem key={course.id} value={course.id}>
+                        {course.code} - {course.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="assign-group">Group</Label>
+                <Select
+                  value={assignGroupId}
+                  onValueChange={setAssignGroupId}
+                  disabled={!assignCourse?.groups?.length}
+                >
+                  <SelectTrigger id="assign-group" className="h-11">
+                    <SelectValue placeholder="Select a group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(assignCourse?.groups ?? []).map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border/70">
+              <div className="flex items-center justify-between border-b border-border/70 px-4 py-2">
+                <p className="text-sm font-medium">Students</p>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setAssignSelectedStudentIds(
+                        (managedUsersQuery.data?.users ?? [])
+                          .filter((user) => user.role === "student")
+                          .map((user) => user.id),
+                      )
+                    }
+                  >
+                    Select all
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAssignSelectedStudentIds([])}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+              <div className="max-h-72 overflow-auto">
+                {managedUsersQuery.isLoading ? (
+                  <p className="p-4 text-sm text-muted-foreground">Loading students...</p>
+                ) : (managedUsersQuery.data?.users ?? []).filter(
+                    (user) => user.role === "student",
+                  ).length ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12"></TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Username</TableHead>
+                        <TableHead>Email</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(managedUsersQuery.data?.users ?? [])
+                        .filter((user) => user.role === "student")
+                        .map((student) => (
+                          <TableRow key={student.id}>
+                            <TableCell>
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4"
+                                checked={assignSelectedStudentIds.includes(student.id)}
+                                onChange={() => toggleStudentSelection(student.id)}
+                              />
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {student.display_name}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {student.username}
+                            </TableCell>
+                            <TableCell>{student.email}</TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <p className="p-4 text-sm text-muted-foreground">
+                    No students found yet. Create students first, then assign them.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={assigningStudents}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void handleAssignStudents()}
+              disabled={assigningStudents}
+            >
+              {assigningStudents ? "Assigning..." : "Assign students"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <div className="space-y-8 animate-in-up">
         <div className="flex items-center justify-between">
           <div>
@@ -620,11 +979,12 @@ export default function ProfessorDashboard() {
                       </div>
 
                       <div className="flex items-center gap-3">
-                        <Link
-                          href={`/professor/roster?courseId=${encodeURIComponent(course.id)}&groupId=${encodeURIComponent(defaultGroup?.id ?? "")}`}
+                        <Button
+                          variant="outline"
+                          onClick={() => openAssignDialog(course)}
                         >
-                          <Button variant="outline">Assign Students</Button>
-                        </Link>
+                          Assign Students
+                        </Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button
@@ -738,6 +1098,153 @@ export default function ProfessorDashboard() {
               );
             })}
           </div>
+        </div>
+
+        <div>
+          <h2 className="text-2xl font-heading font-semibold mb-6">
+            Add students to a group
+          </h2>
+          <Card className="border-border/70 shadow-sm">
+            <CardHeader>
+              <CardTitle>Choose class + group</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Select a group, then pick the students you want to assign.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2 md:items-end">
+                <div className="space-y-2">
+                  <Label htmlFor="roster-course-select">Course</Label>
+                  <Select
+                    value={selectedRosterCourseId}
+                    onValueChange={setSelectedRosterCourseId}
+                    disabled={coursesQuery.isLoading || courses.length === 0}
+                  >
+                    <SelectTrigger id="roster-course-select" className="h-11">
+                      <SelectValue placeholder="Select a course" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {courses.map((course) => (
+                        <SelectItem key={course.id} value={course.id}>
+                          {course.code} - {course.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="roster-group-select">Group</Label>
+                  <Select
+                    value={selectedRosterGroupId}
+                    onValueChange={setSelectedRosterGroupId}
+                    disabled={!rosterGroupOptions.length}
+                  >
+                    <SelectTrigger id="roster-group-select" className="h-11">
+                      <SelectValue placeholder="Select a group" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {rosterGroupOptions.map((group) => (
+                        <SelectItem key={group.id} value={group.id}>
+                          {group.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border/70">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 px-4 py-2">
+                  <p className="text-sm font-medium">Students</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setSelectedRosterStudentIds(rosterStudents.map((s) => s.id))
+                      }
+                      disabled={!rosterStudents.length}
+                    >
+                      Select all
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSelectedRosterStudentIds([])}
+                      disabled={!rosterStudents.length}
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                      disabled={
+                        assigningRosterStudents ||
+                        !selectedRosterGroupId ||
+                        !selectedRosterStudentIds.length
+                      }
+                      onClick={() => void handleAssignRosterStudents()}
+                    >
+                      {assigningRosterStudents ? "Assigning..." : "Assign students"}
+                    </Button>
+                  </div>
+                </div>
+                <div className="max-h-72 overflow-auto">
+                  {managedUsersQuery.isLoading ? (
+                    <p className="p-4 text-sm text-muted-foreground">Loading students...</p>
+                  ) : rosterStudents.length ? (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-12"></TableHead>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Username</TableHead>
+                          <TableHead>Email</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {rosterStudents.map((student) => {
+                          const alreadyAssigned = student.assignments.some(
+                            (assignment) => assignment.groupId === selectedRosterGroupId,
+                          );
+                          return (
+                            <TableRow key={student.id}>
+                              <TableCell>
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4"
+                                  checked={selectedRosterStudentIds.includes(student.id)}
+                                  onChange={() => toggleRosterStudent(student.id)}
+                                  disabled={alreadyAssigned}
+                                />
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {student.display_name}
+                              </TableCell>
+                              <TableCell className="font-mono text-xs">
+                                {student.username}
+                              </TableCell>
+                              <TableCell>{student.email}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <p className="p-4 text-sm text-muted-foreground">
+                      No students found yet. Create students first, then assign them.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {!courses.length && (
+                <p className="text-sm text-muted-foreground">
+                  Create a course and group first, then you can add students.
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         <div>

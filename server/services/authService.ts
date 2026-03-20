@@ -31,7 +31,16 @@ function verifyPassword(password: string, hashed: string) {
   }
 
   const candidate = scryptSync(password, salt, KEY_LENGTH);
-  const stored = Buffer.from(derived, "hex");
+  // Guard against malformed hashes to avoid timingSafeEqual length errors.
+  let stored: Buffer;
+  try {
+    stored = Buffer.from(derived, "hex");
+  } catch {
+    return false;
+  }
+  if (stored.length !== candidate.length) {
+    return false;
+  }
   return timingSafeEqual(candidate, stored);
 }
 
@@ -169,6 +178,36 @@ export const authService = {
       studentId,
       nextPassword,
       "reset",
+    );
+
+    return { temporaryPassword: nextPassword };
+  },
+
+  async resetProfessorPasswordByAdmin(
+    adminId: string,
+    professorId: string,
+    password?: string,
+  ) {
+    if (adminId === professorId) {
+      throw new ApiError(400, "Use change password for your own account.");
+    }
+
+    const professor = await userRepository.findById(professorId);
+    if (!professor || professor.role !== "professor") {
+      throw new ApiError(404, "Professor not found.");
+    }
+
+    const nextPassword =
+      typeof password === "string" && password.trim()
+        ? password.trim()
+        : generateRandomPassword();
+    validateNewPassword(nextPassword);
+
+    const nextHash = hashPassword(nextPassword);
+    await userRepository.updatePasswordWithForceFlag(
+      professorId,
+      nextHash,
+      true,
     );
 
     return { temporaryPassword: nextPassword };
