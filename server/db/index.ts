@@ -37,6 +37,63 @@ if (isPostgres) {
     connectionString: databaseUrl,
     ssl: { rejectUnauthorized: pgSslRejectUnauthorized },
   });
+  // Ensure account_credentials exists for password reset flows.
+  // Safe to run on every startup (idempotent).
+  (async () => {
+    try {
+      const typeResult = await pool.query<{
+        data_type: string;
+        udt_name: string;
+      }>(
+        `
+        SELECT data_type, udt_name
+        FROM information_schema.columns
+        WHERE table_name = 'users' AND column_name = 'id'
+        LIMIT 1;
+        `,
+      );
+      const idType =
+        typeResult.rows[0]?.udt_name === "uuid" ? "UUID" : "TEXT";
+
+      await pool.query(
+        `
+        CREATE TABLE IF NOT EXISTS account_credentials (
+          id ${idType} PRIMARY KEY DEFAULT (gen_random_uuid()),
+          student_id ${idType} NOT NULL REFERENCES users(id),
+          created_by_professor_id ${idType} NOT NULL REFERENCES users(id),
+          plain_password TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT 'manual_create',
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (now())
+        );
+        `,
+      );
+
+      await pool.query(
+        `
+        ALTER TABLE account_credentials
+          ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual_create';
+        ALTER TABLE account_credentials
+          ADD COLUMN IF NOT EXISTS is_active INTEGER NOT NULL DEFAULT 1;
+        ALTER TABLE account_credentials
+          ADD COLUMN IF NOT EXISTS created_at TEXT NOT NULL DEFAULT (now());
+        `,
+      );
+
+      await pool.query(
+        `
+        CREATE INDEX IF NOT EXISTS account_credentials_student_idx
+          ON account_credentials(student_id);
+        CREATE INDEX IF NOT EXISTS account_credentials_professor_idx
+          ON account_credentials(created_by_professor_id);
+        CREATE INDEX IF NOT EXISTS account_credentials_active_idx
+          ON account_credentials(student_id, is_active);
+        `,
+      );
+    } catch (error) {
+      console.warn("Failed to ensure account_credentials table:", error);
+    }
+  })();
   db = drizzlePg(pool);
 } else {
   let dbFile = databaseUrl;

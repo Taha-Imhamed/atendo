@@ -5,6 +5,10 @@ function enabled(value: string | undefined) {
   return value === "1" || value === "true";
 }
 
+function shouldSyncExistingUsers() {
+  return enabled(process.env.BOOTSTRAP_SYNC_USERS);
+}
+
 function readUserConfig(prefix: "PROFESSOR" | "STUDENT" | "ADMIN") {
   const username = process.env[`${prefix}_USERNAME`];
   const email = process.env[`${prefix}_EMAIL`];
@@ -40,18 +44,25 @@ async function ensureUser(
   const byEmail = await userRepository.findByEmail(user.email);
   const existing = byUsername ?? byEmail;
   if (existing) {
-    const hashed = authService.hashPassword(user.password);
-    await userRepository.syncBootstrapUser(existing.id, {
-      email: user.email,
-      username: user.username,
-      display_name: user.display_name,
-      password: hashed,
-      role: user.role,
-    });
-    logger.info("Bootstrap user already exists", {
-      username: user.username,
-      role: user.role,
-    });
+    if (shouldSyncExistingUsers()) {
+      const hashed = authService.hashPassword(user.password);
+      await userRepository.syncBootstrapUser(existing.id, {
+        email: user.email,
+        username: user.username,
+        display_name: user.display_name,
+        password: hashed,
+        role: user.role,
+      });
+      logger.info("Bootstrap user synced", {
+        username: user.username,
+        role: user.role,
+      });
+    } else {
+      logger.info("Bootstrap user already exists (no sync)", {
+        username: user.username,
+        role: user.role,
+      });
+    }
     return;
   }
 

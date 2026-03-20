@@ -61,6 +61,15 @@ function generateRandomPassword(length = 12) {
   return password;
 }
 
+function shouldIgnoreCredentialError(error: unknown) {
+  if (!error) return false;
+  const message =
+    typeof (error as { message?: unknown }).message === "string"
+      ? ((error as { message?: unknown }).message as string).toLowerCase()
+      : "";
+  return message.includes("account_credentials");
+}
+
 export const authService = {
   /** Hash a plaintext password with a random salt. */
   hashPassword,
@@ -134,7 +143,13 @@ export const authService = {
 
     const nextHash = hashPassword(nextPassword);
     const updated = await userRepository.updatePassword(userId, nextHash);
-    await accountCredentialService.deactivateForStudent(userId);
+    try {
+      await accountCredentialService.deactivateForStudent(userId);
+    } catch (error) {
+      if (!shouldIgnoreCredentialError(error)) {
+        throw error;
+      }
+    }
     return updated;
   },
 
@@ -173,12 +188,18 @@ export const authService = {
 
     const nextHash = hashPassword(nextPassword);
     await userRepository.updatePasswordWithForceFlag(studentId, nextHash, true);
-    await accountCredentialService.recordCredential(
-      professorId,
-      studentId,
-      nextPassword,
-      "reset",
-    );
+    try {
+      await accountCredentialService.recordCredential(
+        professorId,
+        studentId,
+        nextPassword,
+        "reset",
+      );
+    } catch (error) {
+      if (!shouldIgnoreCredentialError(error)) {
+        throw error;
+      }
+    }
 
     return { temporaryPassword: nextPassword };
   },
