@@ -1,0 +1,132 @@
+import { Link, useLocation } from "wouter";
+import { LogOut } from "lucide-react";
+import { useRef } from "react";
+import { Button } from "@/components/ui/button";
+import Background3D from "./background-3d";
+import { apiRequest } from "@/lib/queryClient";
+import { useQueryClient } from "@tanstack/react-query";
+import AppLogo from "./app-logo";
+
+interface LayoutProps {
+  children: React.ReactNode;
+  role?: "professor" | "student" | "guest";
+}
+
+export default function Layout({ children, role = "guest" }: LayoutProps) {
+  const [location, setLocation] = useLocation();
+  const queryClient = useQueryClient();
+  const footerTapCountRef = useRef(0);
+  const footerTapTimerRef = useRef<number | null>(null);
+
+  const handleLogout = async () => {
+    try {
+      await apiRequest("POST", "/api/auth/logout");
+    } catch {
+      // Ignore logout failures and clear client state anyway.
+    } finally {
+      queryClient.setQueryData(["me"], null);
+      queryClient.removeQueries();
+    }
+    setLocation("/");
+  };
+
+  const handleFooterSecretAccess = () => {
+    footerTapCountRef.current += 1;
+
+    if (footerTapTimerRef.current !== null) {
+      window.clearTimeout(footerTapTimerRef.current);
+    }
+
+    if (footerTapCountRef.current >= 3) {
+      footerTapCountRef.current = 0;
+      footerTapTimerRef.current = null;
+      setLocation("/staff-access");
+      return;
+    }
+
+    footerTapTimerRef.current = window.setTimeout(() => {
+      footerTapCountRef.current = 0;
+      footerTapTimerRef.current = null;
+    }, 900);
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col font-sans text-foreground bg-background relative">
+      <Background3D />
+      <header className="sticky top-0 z-50 w-full border-b border-border/85 bg-[color:var(--shell-header)]/96 sm:bg-[color:var(--shell-header)]/94 backdrop-blur-xl shadow-[0_12px_28px_color-mix(in_oklab,#b7c9bd_14%,transparent)] pt-[env(safe-area-inset-top)]">
+        <div className="container mx-auto px-3 sm:px-6 py-3 sm:py-0 sm:h-16 flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+          <Link href="/" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <AppLogo />
+          </Link>
+
+          <nav className="flex w-full sm:w-auto items-center justify-between sm:justify-end gap-2 sm:gap-3 flex-wrap">
+            {role === "professor" && (
+              <>
+                <Link
+                  href="/professor/dashboard"
+                  className={`text-sm font-medium transition-colors ${
+                    location === "/professor/dashboard" ? "text-primary" : "text-muted-foreground"
+                  }`}
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/professor/roster"
+                  className={`text-sm font-medium transition-colors ${
+                    location === "/professor/roster" ? "text-primary" : "text-muted-foreground"
+                  }`}
+                >
+                  Roster
+                </Link>
+                <div className="hidden sm:block h-4 w-px bg-border mx-2" />
+              </>
+            )}
+
+            {role !== "guest" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="text-muted-foreground hover:text-primary transition-colors"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Sign Out
+              </Button>
+            )}
+            {role === "guest" && (
+              <Link href="/student/login" className="text-sm font-medium text-muted-foreground hover:text-primary">
+                Student Login
+              </Link>
+            )}
+          </nav>
+        </div>
+      </header>
+
+      <main className="flex-1">
+        <div className="container mx-auto px-3 sm:px-4 py-6 sm:py-8">
+          <div className="rounded-2xl sm:rounded-[32px] border border-border/90 bg-[color:var(--shell-panel)]/96 shadow-[0_26px_56px_color-mix(in_oklab,#c8d7cc_16%,transparent)] backdrop-blur-xl">
+            <div className="p-4 sm:p-6 md:p-8 lg:p-10">{children}</div>
+          </div>
+        </div>
+      </main>
+
+      <footer className="border-t border-border/85 bg-[color:var(--shell-header)]/94 py-6 mt-auto pb-[env(safe-area-inset-bottom)]">
+        <div
+          className="container mx-auto cursor-default select-none px-3 text-center text-sm text-muted-foreground sm:px-4"
+          onClick={handleFooterSecretAccess}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              handleFooterSecretAccess();
+            }
+          }}
+          aria-label="Students of UNYT"
+        >
+          Students of UNYT
+        </div>
+      </footer>
+    </div>
+  );
+}
