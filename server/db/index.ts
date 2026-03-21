@@ -55,6 +55,21 @@ if (isPostgres) {
       const idType =
         typeResult.rows[0]?.udt_name === "uuid" ? "UUID" : "TEXT";
 
+      const passwordType = await pool.query<{
+        data_type: string;
+        udt_name: string;
+      }>(
+        `
+        SELECT data_type, udt_name
+        FROM information_schema.columns
+        WHERE table_name = 'users' AND column_name = 'password'
+        LIMIT 1;
+        `,
+      );
+      if (passwordType.rows[0]?.udt_name && passwordType.rows[0].udt_name !== "text") {
+        await pool.query(`ALTER TABLE users ALTER COLUMN password TYPE TEXT;`);
+      }
+
       await pool.query(
         `
         CREATE TABLE IF NOT EXISTS account_credentials (

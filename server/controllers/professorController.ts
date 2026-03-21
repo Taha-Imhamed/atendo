@@ -9,6 +9,7 @@ import { rosterImportService } from "../services/rosterImportService";
 import { professorAccountService } from "../services/professorAccountService";
 import { buildFallbackStudentEmail } from "../utils/studentEmail";
 import { accountCredentialService } from "../services/accountCredentialService";
+import { userRepository } from "../repositories/userRepository";
 import fs from "fs";
 import path from "path";
 
@@ -225,6 +226,28 @@ export const professorController = {
 
       if (!normalizedPassword) {
         throw new ApiError(400, "Password is required for professor accounts.");
+      }
+
+      const existingByUsername = await userRepository.findByUsername(
+        normalizedUsername,
+      );
+      const existingByEmail = normalizedEmail
+        ? await userRepository.findByEmail(normalizedEmail)
+        : null;
+      const existing = existingByUsername ?? existingByEmail;
+
+      if (existing) {
+        if (role === "student" && existing.role === "student") {
+          res.status(200).json({
+            id: existing.id,
+            email: existing.email,
+            username: existing.username,
+            display_name: existing.display_name,
+            role: existing.role,
+          });
+          return;
+        }
+        throw new ApiError(409, "Username or email already exists.");
       }
 
       const user = await authService.registerUser({
